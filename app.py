@@ -40,7 +40,7 @@ def show_import_export():
             df = pd.read_excel(uploaded_file, engine="openpyxl")
             st.session_state.requests = df.copy()
             st.success("✅ File uploaded and data loaded!")
-            st.dataframe(df.head(), use_container_width=True)
+            st.dataframe(df.astype(str).head(), use_container_width=True)
         except Exception as e:
             st.error(f"Failed to load Excel file: {str(e)}")
 
