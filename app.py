@@ -9,6 +9,28 @@ st.set_page_config(page_title="IHD Request Management", layout="wide")
 if "requests" not in st.session_state:
     st.session_state.requests = pd.DataFrame()
 
+# Utility: Enhanced metrics
+def compute_enhanced_metrics(df):
+    metrics = {}
+    df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df.get('DATE_REQUEST_RECEIVED_X'), errors='coerce')
+    df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df.get('DATE_ACCESS_GRANTED_X'), errors='coerce')
+    df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+
+    metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
+    metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
+
+    if 'DATASET_STATUS' in df.columns:
+        metrics['dataset_status_counts'] = df['DATASET_STATUS'].value_counts().to_dict()
+    else:
+        metrics['dataset_status_counts'] = {}
+
+    today = pd.Timestamp.now()
+    df['DAYS_SINCE_REQUEST'] = (today - df['DATE_REQUEST_RECEIVED_X']).dt.days
+    df['OVERDUE'] = (df['REQUEST_STATUS'] != 'Approved') & (df['DAYS_SINCE_REQUEST'] > 90)
+    metrics['overdue_count'] = df['OVERDUE'].sum()
+
+    return metrics
+
 # Import Excel
 def show_import_export():
     st.subheader("📥 Upload Excel File")
@@ -30,25 +52,25 @@ def show_dashboard():
         st.info("No request data available.")
         return
 
-    df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
-    df["DATE_ACCESS_GRANTED_X"] = pd.to_datetime(df["DATE_ACCESS_GRANTED_X"], errors="coerce")
-    df["TIME_TO_APPROVAL"] = (df["DATE_ACCESS_GRANTED_X"] - df["DATE_REQUEST_RECEIVED_X"]).dt.days
+    metrics = compute_enhanced_metrics(df)
 
-    total_requests = len(df["REQUEST_ID"].dropna().unique())
-    total_datasets = len(df["DATASET_ID"].dropna().unique()) if "DATASET_ID" in df.columns else 0
-    approved = len(df[df["REQUEST_STATUS"] == "Approved"]) if "REQUEST_STATUS" in df.columns else 0
-    avg_time = df["TIME_TO_APPROVAL"].mean()
-    overdue_count = ((df["REQUEST_STATUS"] != "Approved") &
-                     ((pd.Timestamp.now() - df["DATE_REQUEST_RECEIVED_X"]).dt.days > 90)).sum()
-    dataset_summary = df["DATASET_STATUS"].value_counts() if "DATASET_STATUS" in df.columns else pd.Series()
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Requests", len(df["REQUEST_ID"].dropna().unique()))
+    col2.metric("Approved Requests", len(df[df["REQUEST_STATUS"] == "Approved"]) if "REQUEST_STATUS" in df.columns else 0)
+    col3.metric("Total Datasets", len(df["DATASET_ID"].dropna().unique()) if "DATASET_ID" in df.columns else 0)
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Requests", total_requests)
-    col2.metric("Approved Requests", approved)
-    col3.metric("Overdue Requests", int(overdue_count))
-    col4.metric("Avg. Time to Approval", f"{avg_time:.1f} days" if pd.notnull(avg_time) else "N/A")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("⏱️ Avg. Time to Approval", f"{metrics['avg_time_to_approval']:.1f} days" if metrics['avg_time_to_approval'] else "N/A")
+    col2.metric("📉 Median Time to Approval", f"{metrics['median_time_to_approval']:.1f} days" if metrics['median_time_to_approval'] else "N/A")
+    col3.metric("⚠️ Overdue Requests", metrics['overdue_count'])
+
+    if metrics['dataset_status_counts']:
+        st.markdown("#### 📦 Dataset Status Summary")
+        status_df = pd.DataFrame(metrics['dataset_status_counts'].items(), columns=["Status", "Count"])
+        st.dataframe(status_df, use_container_width=True)
 
     if "REQUEST_STATUS" in df.columns:
+        st.markdown("#### 🧁 Request Status Distribution")
         status_counts = df["REQUEST_STATUS"].value_counts()
         fig = px.pie(
             values=status_counts.values,
@@ -58,6 +80,7 @@ def show_dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
     if "DATE_REQUEST_RECEIVED_X" in df.columns:
+        df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
         timeline = df.groupby(df["DATE_REQUEST_RECEIVED_X"].dt.to_period("M")).size()
         fig = px.line(
             x=timeline.index.astype(str),
@@ -66,17 +89,6 @@ def show_dashboard():
             title="Monthly Request Trends"
         )
         st.plotly_chart(fig, use_container_width=True)
-
-    if not dataset_summary.empty:
-        st.subheader("📦 Dataset Status Summary")
-        st.plotly_chart(
-            px.pie(
-                names=dataset_summary.index,
-                values=dataset_summary.values,
-                title="Dataset Status Distribution"
-            ),
-            use_container_width=True
-        )
 
 # View/Edit Requests
 def show_view_requests():
@@ -163,8 +175,7 @@ def show_request_form_editor():
         request_status = st.text_input("Request Status", value=request_row.get("REQUEST_STATUS", ""))
     with col2:
         request_type = st.text_input("Request Type", value=request_row.get("IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", ""))
-        date_received = st.date_input("Date Request Received",
-                                      pd.to_datetime(request_row.get("DATE_REQUEST_RECEIVED_X", date.today())))
+        date_received = st.date_input("Date Request Received", pd.to_datetime(request_row.get("DATE_REQUEST_RECEIVED_X", date.today())))
 
     if st.button("💾 Save Request"):
         idxs = df[df["REQUEST_ID"] == selected_id].index
