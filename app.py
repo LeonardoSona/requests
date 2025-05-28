@@ -12,29 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Constants
-REQUEST_STATUSES = ["Draft", "Submitted", "In Review", "Approved", "Rejected"]
-DATASET_STATUSES = ["Pending", "In Review", "Approved - Access Granted", "Rejected"]
-
-IHD_SOURCE_TYPES = [
-    "Clinical Data",
-    "Claims Data", 
-    "Electronic Health Records",
-    "Patient Surveys",
-    "Laboratory Results",
-    "Imaging Data",
-    "Genomic Data"
-]
-
-ANALYSIS_TYPES = [
-    "Descriptive Analysis",
-    "Predictive Modeling",
-    "Statistical Analysis",
-    "Machine Learning",
-    "Data Mining",
-    "Cohort Analysis"
-]
-
 # Initialize session state
 def initialize_session_state():
     if 'requests' not in st.session_state:
@@ -48,6 +25,17 @@ def initialize_session_state():
     if 'file_uploaded' not in st.session_state:
         st.session_state.file_uploaded = False
 
+# Extract max numeric ID from ID strings
+def extract_max_id(df, col_name, prefix):
+    if col_name in df.columns:
+        try:
+            return int(
+                df[col_name].dropna().astype(str).str.extract(fr"{prefix}(\d+)").astype(float).max()[0]
+            )
+        except:
+            return 0
+    return 0
+
 # Upload Excel
 def show_import_export():
     st.title("📥 Upload Excel to Start")
@@ -56,43 +44,41 @@ def show_import_export():
     if uploaded_file:
         try:
             excel_data = pd.read_excel(uploaded_file, sheet_name=None)
-            st.write("📄 Found sheets:", list(excel_data.keys()))  # 🔍 Debug line
+            st.write("📄 Found sheets:", list(excel_data.keys()))
 
-            # Handle flexible sheet name (e.g., "requests", "Requests", "REQUESTS")
+            # Load 'Requests' sheet
             sheet_key = [k for k in excel_data if k.lower() == 'requests']
             if sheet_key:
                 df = excel_data[sheet_key[0]]
-                st.write("✅ Preview of 'Requests':")
-                st.dataframe(df.head())  # 🔍 Preview
-
                 st.session_state.requests = df
+                st.session_state.last_request_id = extract_max_id(df, 'REQUEST_ID', prefix='REQ-')
 
-                max_id = df['REQUEST_ID'].dropna().str.extract(r"REQ-(\\d+)").astype(float).max()[0]
-                st.session_state.last_request_id = int(max_id) if pd.notna(max_id) else 0
-
+                st.write("✅ Preview of 'Requests':")
+                st.dataframe(df.head(), use_container_width=True)
             else:
-                st.error("❌ Sheet 'Requests' not found. Please check your Excel file.")
+                st.error("❌ Sheet 'Requests' not found.")
 
-            if 'Datasets' in excel_data:
-                st.session_state.datasets = excel_data['Datasets']
-                max_id = st.session_state.datasets['DATASET_ID'].dropna().str.extract(r"DS-(\\d+)").astype(float).max()[0]
-                st.session_state.last_dataset_id = int(max_id) if pd.notna(max_id) else 0
+            # Load 'Datasets' sheet
+            dataset_key = [k for k in excel_data if k.lower() == 'datasets']
+            if dataset_key:
+                df = excel_data[dataset_key[0]]
+                st.session_state.datasets = df
+                st.session_state.last_dataset_id = extract_max_id(df, 'DATASET_ID', prefix='DS-')
+                st.write("✅ Preview of 'Datasets':")
+                st.dataframe(df.head(), use_container_width=True)
 
             st.session_state.file_uploaded = True
             st.success("✅ File successfully uploaded and data loaded!")
             st.rerun()
 
         except Exception as e:
-            st.error(f"Failed to read Excel file: {str(e)}")
-            
+            st.error(f"❌ Failed to read Excel file: {str(e)}")
+
 # Dashboard
 def show_dashboard():
     st.title("📊 IHD Request Dashboard")
-
     requests_df = st.session_state.requests
-    datasets_df = st.session_state.datasets
 
-    # Fallback info if empty
     if requests_df.empty:
         st.warning("No request data loaded. Please upload an Excel file with a 'Requests' sheet.")
         return
@@ -100,31 +86,31 @@ def show_dashboard():
     # Metrics
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Requests", len(requests_df))
-    col2.metric("Approved Requests", len(requests_df[requests_df["REQUEST_STATUS"] == "Approved"]))
-    col3.metric("Pending Requests", len(requests_df[requests_df["REQUEST_STATUS"].isin(["Draft", "Submitted", "In Review"])]))
+    col2.metric("Approved", len(requests_df[requests_df["REQUEST_STATUS"] == "Approved"]) if "REQUEST_STATUS" in requests_df.columns else 0)
+    col3.metric("Pending", len(requests_df[requests_df["REQUEST_STATUS"].isin(["Draft", "Submitted", "In Review"])] if "REQUEST_STATUS" in requests_df.columns else []))
 
     st.markdown("### 📅 Recent Requests")
-    try:
-        # Ensure date column is proper datetime
-        requests_df['DATE_REQUEST_RECEIVED'] = pd.to_datetime(requests_df['DATE_REQUEST_RECEIVED'], errors='coerce')
-        sorted_df = requests_df.sort_values(by='DATE_REQUEST_RECEIVED', ascending=False)
-        st.dataframe(sorted_df.head(10)[['REQUEST_ID', 'NAME', 'EMAIL', 'REQUEST_STATUS', 'DATE_REQUEST_RECEIVED']], use_container_width=True)
-    except Exception as e:
-        st.error(f"Failed to render recent requests: {e}")
-        st.dataframe(requests_df.head(), use_container_width=True)
 
-    st.markdown("### 📊 Request Status Distribution")
-    status_counts = requests_df['REQUEST_STATUS'].value_counts()
-    if not status_counts.empty:
-        fig = px.pie(
-            names=status_counts.index,
-            values=status_counts.values,
-            title="Request Status Distribution"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    date_cols = [c for c in requests_df.columns if "DATE_REQUEST_RECEIVED" in c.upper()]
+    if date_cols:
+        date_col = date_cols[0]
+        requests_df[date_col] = pd.to_datetime(requests_df[date_col], errors='coerce')
+        sorted_df = requests_df.sort_values(by=date_col, ascending=False)
+        st.dataframe(sorted_df.head(10), use_container_width=True)
     else:
-        st.info("No valid 'REQUEST_STATUS' values to plot.")
+        st.warning("No 'DATE_REQUEST_RECEIVED' column found.")
+        st.dataframe(requests_df.head(10), use_container_width=True)
 
+    if "REQUEST_STATUS" in requests_df.columns:
+        st.markdown("### 📊 Request Status Distribution")
+        status_counts = requests_df['REQUEST_STATUS'].value_counts()
+        if not status_counts.empty:
+            fig = px.pie(
+                names=status_counts.index,
+                values=status_counts.values,
+                title="Request Status Distribution"
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
 # Main app
 def main():
@@ -140,7 +126,6 @@ def main():
         show_dashboard()
     elif page == "Import/Export":
         show_import_export()
-        
 
 if __name__ == "__main__":
     main()
