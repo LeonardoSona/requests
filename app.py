@@ -187,6 +187,3 @@ elif tab[2]:
     show_request_form_editor()
 elif tab[3]:
     show_import_export()
-
-if __name__ == "__main__":
-    main()
