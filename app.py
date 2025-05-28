@@ -90,17 +90,36 @@ def show_dashboard():
         )
         st.plotly_chart(fig, use_container_width=True)
 
-# Request Form Editor
+# Request Form Editor with arrow navigation
 def show_request_form_editor():
     st.subheader("📝 Request Form Editor")
-
     df = st.session_state.requests.copy()
     if df.empty or "REQUEST_ID" not in df.columns:
         st.warning("No request data available.")
         return
 
-    unique_requests = df["REQUEST_ID"].dropna().unique().tolist()
-    selected_id = st.selectbox("Select Request ID", unique_requests)
+    unique_requests = sorted(df["REQUEST_ID"].dropna().unique().tolist())
+    num_requests = len(unique_requests)
+
+    if num_requests == 0:
+        st.warning("No valid Request IDs found.")
+        return
+
+    # Ensure index is valid
+    if st.session_state.selected_index >= num_requests:
+        st.session_state.selected_index = 0
+
+    # Navigation
+    col1, col2, col3 = st.columns([1, 4, 1])
+    with col1:
+        if st.button("⬅️"):
+            st.session_state.selected_index = (st.session_state.selected_index - 1) % num_requests
+    with col2:
+        selected_id = st.selectbox("Select Request ID", unique_requests, index=st.session_state.selected_index)
+        st.session_state.selected_index = unique_requests.index(selected_id)
+    with col3:
+        if st.button("➡️"):
+            st.session_state.selected_index = (st.session_state.selected_index + 1) % num_requests
 
     req_df = df[df["REQUEST_ID"] == selected_id].copy()
     if req_df.empty:
@@ -110,28 +129,31 @@ def show_request_form_editor():
     request_row = req_df.iloc[0].copy()
 
     st.markdown("### ✏️ Request Details")
-    col1, col2 = st.columns(2)
-    with col1:
-        name = st.text_input("Name", value=request_row.get("NAME", ""))
-        email = st.text_input("Email", value=request_row.get("EMAIL", ""))
-        request_status = st.text_input("Request Status", value=request_row.get("REQUEST_STATUS", ""))
-    with col2:
-        request_type = st.text_input("Request Type", value=request_row.get("IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", ""))
-        date_received = st.date_input("Date Request Received", pd.to_datetime(request_row.get("DATE_REQUEST_RECEIVED_X", date.today())))
+    req_columns = req_df.columns.tolist()
+    selected_req_cols = st.multiselect("Choose columns to display/edit for the request", req_columns,
+                                       default=["NAME", "EMAIL", "REQUEST_STATUS", "IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", "DATE_REQUEST_RECEIVED_X"])
+
+    req_data = {}
+    for col in selected_req_cols:
+        value = request_row.get(col, "")
+        if "DATE" in col.upper():
+            req_data[col] = st.date_input(col, value=pd.to_datetime(value, errors="coerce") if value else date.today())
+        else:
+            req_data[col] = st.text_input(col, value)
 
     if st.button("💾 Save Request"):
         idxs = df[df["REQUEST_ID"] == selected_id].index
         for idx in idxs:
-            st.session_state.requests.at[idx, "NAME"] = name
-            st.session_state.requests.at[idx, "EMAIL"] = email
-            st.session_state.requests.at[idx, "REQUEST_STATUS"] = request_status
-            st.session_state.requests.at[idx, "IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY"] = request_type
-            st.session_state.requests.at[idx, "DATE_REQUEST_RECEIVED_X"] = date_received
+            for col, val in req_data.items():
+                st.session_state.requests.at[idx, col] = val
         st.success("✅ Request updated.")
 
     st.markdown("### 📄 Associated Datasets")
-    if "DATASET_ID" in req_df.columns:
-        dataset_df = req_df[["DATASET_ID", "DATASET_NAME", "DATASET_STATUS"]].copy()
+    dataset_columns = [col for col in req_df.columns if "DATASET" in col.upper()]
+    if dataset_columns:
+        selected_ds_cols = st.multiselect("Choose dataset columns to display", dataset_columns,
+                                          default=["DATASET_ID", "DATASET_NAME", "DATASET_STATUS"])
+        dataset_df = req_df[selected_ds_cols].copy()
         st.dataframe(dataset_df, use_container_width=True)
     else:
         st.info("No dataset info available for this request.")
