@@ -5,10 +5,12 @@ import plotly.graph_objects as go
 from datetime import datetime, date
 import io
 import json
+import os
+import pickle
 
 # Page configuration
 st.set_page_config(
-    page_title="Request Management System",
+    page_title="IHD Request Management System",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -37,49 +39,124 @@ ANALYSIS_TYPES = [
     "Cohort Analysis"
 ]
 
-# Initialize session state
+# File paths for persistence
+DATA_DIR = "data"
+REQUESTS_FILE = os.path.join(DATA_DIR, "requests.pkl")
+DATASETS_FILE = os.path.join(DATA_DIR, "datasets.pkl")
+COUNTERS_FILE = os.path.join(DATA_DIR, "counters.pkl")
+
+# Create data directory if it doesn't exist
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Persistence functions
+def save_data():
+    """Save all data to files"""
+    try:
+        # Save requests
+        with open(REQUESTS_FILE, 'wb') as f:
+            pickle.dump(st.session_state.requests, f)
+        
+        # Save datasets
+        with open(DATASETS_FILE, 'wb') as f:
+            pickle.dump(st.session_state.datasets, f)
+        
+        # Save counters
+        counters = {
+            'last_request_id': st.session_state.last_request_id,
+            'last_dataset_id': st.session_state.last_dataset_id
+        }
+        with open(COUNTERS_FILE, 'wb') as f:
+            pickle.dump(counters, f)
+            
+        return True
+    except Exception as e:
+        st.error(f"Error saving data: {str(e)}")
+        return False
+
+def load_data():
+    """Load all data from files"""
+    try:
+        # Load requests
+        if os.path.exists(REQUESTS_FILE):
+            with open(REQUESTS_FILE, 'rb') as f:
+                st.session_state.requests = pickle.load(f)
+        else:
+            st.session_state.requests = pd.DataFrame(columns=[
+                'REQUEST_ID', 'DATE_REQUEST_RECEIVED', 'NAME', 'EMAIL',
+                'COMPLETED_IHD_ACTIVITY_PROPOSAL', 'SUPPORTING_DOCUMENTS',
+                'IHD_SOURCES', 'COMPANY_IHD_CRITERIA', 'REQUIRES_NONANONYMIZED',
+                'NONANONYMIZED_RATIONALE', 'ANALYSIS_TYPES', 'REQUEST_TYPE',
+                'LAST_UPDATED_DATE', 'LAST_UPDATED_BY', 'REQUEST_STATUS'
+            ])
+        
+        # Load datasets
+        if os.path.exists(DATASETS_FILE):
+            with open(DATASETS_FILE, 'rb') as f:
+                st.session_state.datasets = pickle.load(f)
+        else:
+            st.session_state.datasets = pd.DataFrame(columns=[
+                'DATASET_ID', 'DATASET_NAME', 'DESCRIPTION', 'SOURCE_TYPE',
+                'DATE_CREATED', 'CREATED_BY', 'STATUS', 'ACCESS_LEVEL'
+            ])
+        
+        # Load counters
+        if os.path.exists(COUNTERS_FILE):
+            with open(COUNTERS_FILE, 'rb') as f:
+                counters = pickle.load(f)
+                st.session_state.last_request_id = counters.get('last_request_id', 0)
+                st.session_state.last_dataset_id = counters.get('last_dataset_id', 0)
+        else:
+            st.session_state.last_request_id = 0
+            st.session_state.last_dataset_id = 0
+            
+        return True
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return False
+
+# Initialize session state with persistence
 def initialize_session_state():
-    if 'requests' not in st.session_state:
-        st.session_state.requests = pd.DataFrame(columns=[
-            'REQUEST_ID', 'DATE_REQUEST_RECEIVED', 'NAME', 'EMAIL',
-            'COMPLETED_IHD_ACTIVITY_PROPOSAL', 'SUPPORTING_DOCUMENTS',
-            'IHD_SOURCES', 'COMPANY_IHD_CRITERIA', 'REQUIRES_NONANONYMIZED',
-            'NONANONYMIZED_RATIONALE', 'ANALYSIS_TYPES', 'REQUEST_TYPE',
-            'LAST_UPDATED_DATE', 'LAST_UPDATED_BY', 'REQUEST_STATUS'
-        ])
-    
-    if 'datasets' not in st.session_state:
-        st.session_state.datasets = pd.DataFrame(columns=[
-            'DATASET_ID', 'DATASET_NAME', 'DESCRIPTION', 'SOURCE_TYPE',
-            'DATE_CREATED', 'CREATED_BY', 'STATUS', 'ACCESS_LEVEL'
-        ])
-    
-    if 'last_request_id' not in st.session_state:
-        st.session_state.last_request_id = 0
-    
-    if 'last_dataset_id' not in st.session_state:
-        st.session_state.last_dataset_id = 0
+    if 'data_loaded' not in st.session_state:
+        load_data()
+        st.session_state.data_loaded = True
 
 # Helper functions
 def get_next_request_id():
     st.session_state.last_request_id += 1
+    save_data()  # Save after incrementing
     return f"REQ-{st.session_state.last_request_id:04d}"
 
 def get_next_dataset_id():
     st.session_state.last_dataset_id += 1
+    save_data()  # Save after incrementing
     return f"DS-{st.session_state.last_dataset_id:04d}"
 
 def add_request(request_data):
     new_request = pd.DataFrame([request_data])
     st.session_state.requests = pd.concat([st.session_state.requests, new_request], ignore_index=True)
+    save_data()  # Save after adding
 
 def add_dataset(dataset_data):
     new_dataset = pd.DataFrame([dataset_data])
     st.session_state.datasets = pd.concat([st.session_state.datasets, new_dataset], ignore_index=True)
+    save_data()  # Save after adding
+
+def update_requests(updated_df):
+    st.session_state.requests = updated_df
+    save_data()  # Save after updating
+
+def update_datasets(updated_df):
+    st.session_state.datasets = updated_df
+    save_data()  # Save after updating
 
 # Dashboard page
 def show_dashboard():
     st.title("📊 IHD Request Dashboard")
+    
+    # Auto-save indicator
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        st.success("✅ Auto-save enabled")
     
     # Key metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -112,7 +189,6 @@ def show_dashboard():
         with col2:
             st.subheader("Requests Over Time")
             if 'DATE_REQUEST_RECEIVED' in st.session_state.requests.columns:
-                # Convert to datetime if it's not already
                 requests_copy = st.session_state.requests.copy()
                 requests_copy['DATE_REQUEST_RECEIVED'] = pd.to_datetime(requests_copy['DATE_REQUEST_RECEIVED'], errors='coerce')
                 requests_by_date = requests_copy.groupby(requests_copy['DATE_REQUEST_RECEIVED'].dt.date).size()
@@ -193,7 +269,7 @@ def show_new_request():
                 }
                 
                 add_request(request_data)
-                st.success(f"Request {request_data['REQUEST_ID']} created successfully!")
+                st.success(f"✅ Request {request_data['REQUEST_ID']} created and saved successfully!")
                 st.rerun()
             else:
                 st.error("Please fill in all required fields (marked with *)")
@@ -216,7 +292,10 @@ def show_view_requests():
         search_term = st.text_input("Search by Name or Email", placeholder="Enter search term")
     
     with col3:
-        st.write("")  # Spacing
+        if st.button("🔄 Refresh Data"):
+            load_data()
+            st.success("Data refreshed!")
+            st.rerun()
     
     # Apply filters
     filtered_requests = st.session_state.requests.copy()
@@ -263,7 +342,8 @@ def show_view_requests():
                 request_id = row['REQUEST_ID']
                 st.session_state.requests.loc[st.session_state.requests['REQUEST_ID'] == request_id] = row
             
-            st.success("Changes saved successfully!")
+            update_requests(st.session_state.requests)
+            st.success("✅ Changes saved successfully!")
     else:
         st.warning("No requests match the current filters.")
 
@@ -294,8 +374,8 @@ def show_manage_datasets():
             )
             
             if not edited_datasets.equals(st.session_state.datasets):
-                st.session_state.datasets = edited_datasets
-                st.success("Dataset changes saved!")
+                update_datasets(edited_datasets)
+                st.success("✅ Dataset changes saved!")
         else:
             st.info("No datasets found. Add your first dataset using the 'Add New Dataset' tab.")
     
@@ -329,12 +409,12 @@ def show_manage_datasets():
                     }
                     
                     add_dataset(dataset_data)
-                    st.success(f"Dataset {dataset_data['DATASET_ID']} created successfully!")
+                    st.success(f"✅ Dataset {dataset_data['DATASET_ID']} created and saved successfully!")
                     st.rerun()
                 else:
                     st.error("Please fill in all required fields (marked with *)")
 
-# Reports page
+# Reports page  
 def show_reports():
     st.title("📈 Reports & Analytics")
     
@@ -358,7 +438,9 @@ def show_reports():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.bar_chart(status_summary)
+            fig = px.bar(x=status_summary.index, y=status_summary.values,
+                        title="Request Status Distribution")
+            st.plotly_chart(fig, use_container_width=True)
         
         with col2:
             st.dataframe(status_summary.reset_index())
@@ -379,7 +461,6 @@ def show_reports():
     elif report_type == "IHD Source Analysis":
         st.subheader("IHD Source Analysis")
         
-        # Parse IHD sources (they're stored as comma-separated strings)
         all_sources = []
         for sources_str in st.session_state.requests['IHD_SOURCES'].dropna():
             if sources_str:
@@ -408,7 +489,7 @@ def show_reports():
         
         st.dataframe(user_activity, use_container_width=True)
 
-# Import/Export page
+# Import/Export page with better persistence handling
 def show_import_export():
     st.title("📥📤 Import/Export Data")
     
@@ -422,14 +503,12 @@ def show_import_export():
         with col1:
             if st.button("📊 Export Requests to Excel", use_container_width=True):
                 if len(st.session_state.requests) > 0:
-                    # Create Excel file in memory
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         st.session_state.requests.to_excel(writer, sheet_name='Requests', index=False)
                         if len(st.session_state.datasets) > 0:
                             st.session_state.datasets.to_excel(writer, sheet_name='Datasets', index=False)
                     
-                    # Download button
                     st.download_button(
                         label="💾 Download Excel File",
                         data=output.getvalue(),
@@ -466,26 +545,49 @@ def show_import_export():
         
         if uploaded_file is not None:
             try:
-                # Read Excel file
                 excel_data = pd.read_excel(uploaded_file, sheet_name=None)
                 
                 st.success(f"File uploaded successfully! Found sheets: {list(excel_data.keys())}")
                 
+                col1, col2 = st.columns(2)
+                
                 # Import requests
                 if 'Requests' in excel_data:
-                    if st.button("Import Requests", type="primary"):
-                        requests_df = excel_data['Requests']
-                        st.session_state.requests = pd.concat([st.session_state.requests, requests_df], ignore_index=True)
-                        st.success(f"Imported {len(requests_df)} requests!")
-                        st.rerun()
+                    with col1:
+                        if st.button("📊 Import Requests", type="primary", use_container_width=True):
+                            requests_df = excel_data['Requests']
+                            
+                            # Update IDs to avoid conflicts
+                            max_existing_id = st.session_state.last_request_id
+                            for idx, row in requests_df.iterrows():
+                                if pd.isna(row['REQUEST_ID']) or row['REQUEST_ID'] == '':
+                                    max_existing_id += 1
+                                    requests_df.at[idx, 'REQUEST_ID'] = f"REQ-{max_existing_id:04d}"
+                            
+                            st.session_state.last_request_id = max_existing_id
+                            st.session_state.requests = pd.concat([st.session_state.requests, requests_df], ignore_index=True)
+                            save_data()
+                            st.success(f"✅ Imported {len(requests_df)} requests and saved!")
+                            st.rerun()
                 
                 # Import datasets
                 if 'Datasets' in excel_data:
-                    if st.button("Import Datasets", type="primary"):
-                        datasets_df = excel_data['Datasets']
-                        st.session_state.datasets = pd.concat([st.session_state.datasets, datasets_df], ignore_index=True)
-                        st.success(f"Imported {len(datasets_df)} datasets!")
-                        st.rerun()
+                    with col2:
+                        if st.button("🗄️ Import Datasets", type="primary", use_container_width=True):
+                            datasets_df = excel_data['Datasets']
+                            
+                            # Update IDs to avoid conflicts
+                            max_existing_id = st.session_state.last_dataset_id
+                            for idx, row in datasets_df.iterrows():
+                                if pd.isna(row['DATASET_ID']) or row['DATASET_ID'] == '':
+                                    max_existing_id += 1
+                                    datasets_df.at[idx, 'DATASET_ID'] = f"DS-{max_existing_id:04d}"
+                            
+                            st.session_state.last_dataset_id = max_existing_id
+                            st.session_state.datasets = pd.concat([st.session_state.datasets, datasets_df], ignore_index=True)
+                            save_data()
+                            st.success(f"✅ Imported {len(datasets_df)} datasets and saved!")
+                            st.rerun()
                 
                 # Preview data
                 st.subheader("Data Preview")
@@ -518,6 +620,22 @@ def main():
         approved_count = len(st.session_state.requests[st.session_state.requests['REQUEST_STATUS'] == 'Approved'])
         approval_rate = (approved_count / len(st.session_state.requests)) * 100
         st.sidebar.metric("Approval Rate", f"{approval_rate:.1f}%")
+    
+    # Manual save/load buttons
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 💾 Data Management")
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.button("💾 Save", use_container_width=True):
+            if save_data():
+                st.sidebar.success("Saved!")
+    
+    with col2:
+        if st.button("🔄 Load", use_container_width=True):
+            if load_data():
+                st.sidebar.success("Loaded!")
+                st.rerun()
     
     # Page routing
     if page == "Dashboard":
