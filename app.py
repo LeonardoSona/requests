@@ -30,14 +30,23 @@ def show_dashboard():
         st.info("No request data available.")
         return
 
+    df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
+    df["DATE_ACCESS_GRANTED_X"] = pd.to_datetime(df["DATE_ACCESS_GRANTED_X"], errors="coerce")
+    df["TIME_TO_APPROVAL"] = (df["DATE_ACCESS_GRANTED_X"] - df["DATE_REQUEST_RECEIVED_X"]).dt.days
+
     total_requests = len(df["REQUEST_ID"].dropna().unique())
     total_datasets = len(df["DATASET_ID"].dropna().unique()) if "DATASET_ID" in df.columns else 0
     approved = len(df[df["REQUEST_STATUS"] == "Approved"]) if "REQUEST_STATUS" in df.columns else 0
+    avg_time = df["TIME_TO_APPROVAL"].mean()
+    overdue_count = ((df["REQUEST_STATUS"] != "Approved") &
+                     ((pd.Timestamp.now() - df["DATE_REQUEST_RECEIVED_X"]).dt.days > 90)).sum()
+    dataset_summary = df["DATASET_STATUS"].value_counts() if "DATASET_STATUS" in df.columns else pd.Series()
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Requests", total_requests)
     col2.metric("Approved Requests", approved)
-    col3.metric("Total Datasets", total_datasets)
+    col3.metric("Overdue Requests", int(overdue_count))
+    col4.metric("Avg. Time to Approval", f"{avg_time:.1f} days" if pd.notnull(avg_time) else "N/A")
 
     if "REQUEST_STATUS" in df.columns:
         status_counts = df["REQUEST_STATUS"].value_counts()
@@ -49,7 +58,6 @@ def show_dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
     if "DATE_REQUEST_RECEIVED_X" in df.columns:
-        df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
         timeline = df.groupby(df["DATE_REQUEST_RECEIVED_X"].dt.to_period("M")).size()
         fig = px.line(
             x=timeline.index.astype(str),
@@ -58,6 +66,17 @@ def show_dashboard():
             title="Monthly Request Trends"
         )
         st.plotly_chart(fig, use_container_width=True)
+
+    if not dataset_summary.empty:
+        st.subheader("📦 Dataset Status Summary")
+        st.plotly_chart(
+            px.pie(
+                names=dataset_summary.index,
+                values=dataset_summary.values,
+                title="Dataset Status Distribution"
+            ),
+            use_container_width=True
+        )
 
 # View/Edit Requests
 def show_view_requests():
