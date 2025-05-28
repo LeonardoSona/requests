@@ -93,6 +93,8 @@ def show_dashboard():
 # Request Form Editor with arrow navigation
 def show_request_form_editor():
     st.subheader("📝 Request Form Editor")
+    if "selected_index" not in st.session_state:
+        st.session_state.selected_index = 0
     df = st.session_state.requests.copy()
     if df.empty or "REQUEST_ID" not in df.columns:
         st.warning("No request data available.")
