@@ -112,16 +112,17 @@ def show_request_form_editor():
         st.session_state.selected_index = 0
 
     # Navigation
-    col1, col2, col3 = st.columns([1, 4, 1])
+    col1, col2, col3 = st.columns([1, 1, 4])
     with col1:
         if st.button("⬅️"):
             st.session_state.selected_index = (st.session_state.selected_index - 1) % num_requests
     with col2:
-        selected_id = st.selectbox("Select Request ID", unique_requests, index=st.session_state.selected_index)
-        st.session_state.selected_index = unique_requests.index(selected_id)
-    with col3:
         if st.button("➡️"):
             st.session_state.selected_index = (st.session_state.selected_index + 1) % num_requests
+    with col3:
+        selected_id = st.selectbox("Select Request ID", unique_requests, index=st.session_state.selected_index)
+        st.session_state.selected_index = unique_requests.index(selected_id)
+        
 
     req_df = df[df["REQUEST_ID"] == selected_id].copy()
     if req_df.empty:
