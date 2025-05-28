@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import date
-import io
 
 st.set_page_config(page_title="IHD Request Management", layout="wide")
 
@@ -10,11 +9,10 @@ st.set_page_config(page_title="IHD Request Management", layout="wide")
 if "requests" not in st.session_state:
     st.session_state.requests = pd.DataFrame()
 
-# Import Page
+# Import Excel
 def show_import_export():
     st.subheader("📥 Upload Excel File")
     uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
-
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file, engine="openpyxl")
@@ -27,7 +25,6 @@ def show_import_export():
 # Dashboard
 def show_dashboard():
     st.subheader("📊 Dashboard")
-
     df = st.session_state.requests
     if df.empty or "REQUEST_ID" not in df.columns:
         st.info("No request data available.")
@@ -42,7 +39,6 @@ def show_dashboard():
     col2.metric("Approved Requests", approved)
     col3.metric("Total Datasets", total_datasets)
 
-    # Plotly pie chart
     if "REQUEST_STATUS" in df.columns:
         status_counts = df["REQUEST_STATUS"].value_counts()
         fig = px.pie(
@@ -52,7 +48,6 @@ def show_dashboard():
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    # Requests over time
     if "DATE_REQUEST_RECEIVED_X" in df.columns:
         df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
         timeline = df.groupby(df["DATE_REQUEST_RECEIVED_X"].dt.to_period("M")).size()
@@ -64,7 +59,7 @@ def show_dashboard():
         )
         st.plotly_chart(fig, use_container_width=True)
 
-# View & Edit
+# View/Edit Requests
 def show_view_requests():
     st.subheader("📋 View & Edit Requests")
 
@@ -72,11 +67,6 @@ def show_view_requests():
     if df.empty:
         st.warning("No data available. Please upload a file.")
         return
-
-    if "REQUEST_ID" in df.columns and "DATASET_ID" in df.columns:
-        df["UNIQUE_KEY"] = df["REQUEST_ID"].astype(str) + "_" + df["DATASET_ID"].astype(str)
-    else:
-        df["UNIQUE_KEY"] = df.index.astype(str)
 
     col1, col2 = st.columns(2)
     search = col1.text_input("Search by NAME or EMAIL")
@@ -96,7 +86,7 @@ def show_view_requests():
     st.markdown("### 🧩 Select Columns to Display/Edit")
     columns_to_display = st.multiselect(
         "Pick columns",
-        options=[col for col in filtered_df.columns if col != "UNIQUE_KEY"],
+        options=filtered_df.columns.tolist(),
         default=["REQUEST_ID", "DATASET_ID", "NAME", "EMAIL", "REQUEST_STATUS"]
     )
 
@@ -104,22 +94,19 @@ def show_view_requests():
         st.info("Please select at least one column.")
         return
 
-    edit_df = filtered_df[["UNIQUE_KEY"] + columns_to_display].copy()
-    edit_df = edit_df.set_index("UNIQUE_KEY")
-
+    edit_df = filtered_df[columns_to_display].copy()
     st.markdown("### ✏️ Editable Table")
-    edited_df = st.data_editor(edit_df, num_rows="dynamic", use_container_width=True).reset_index()
+    edited_df = st.data_editor(edit_df, num_rows="dynamic", use_container_width=True)
 
     if st.button("💾 Save Changes"):
-        for _, row in edited_df.iterrows():
-            mask = (st.session_state.requests["REQUEST_ID"].astype(str) + "_" +
-                    st.session_state.requests["DATASET_ID"].astype(str)) == row["UNIQUE_KEY"]
+        for idx, row in edited_df.iterrows():
+            mask = (st.session_state.requests["REQUEST_ID"] == row["REQUEST_ID"]) & \
+                   (st.session_state.requests["DATASET_ID"] == row["DATASET_ID"])
             for col in columns_to_display:
-                if col in st.session_state.requests.columns:
-                    st.session_state.requests.loc[mask, col] = row[col]
+                st.session_state.requests.loc[mask, col] = row[col]
         st.success("✅ Changes saved.")
 
-# Form Editor
+# Request Form Editor
 def show_request_form_editor():
     st.subheader("📝 Request Form Editor")
 
@@ -143,20 +130,9 @@ def show_request_form_editor():
     with col1:
         name = st.text_input("Name", value=request_row.get("NAME", ""))
         email = st.text_input("Email", value=request_row.get("EMAIL", ""))
-        request_status = st.selectbox(
-            "Request Status",
-            df["REQUEST_STATUS"].dropna().unique().tolist() if "REQUEST_STATUS" in df.columns else [],
-            index=0 if pd.isna(request_row.get("REQUEST_STATUS")) else
-            df["REQUEST_STATUS"].dropna().unique().tolist().index(request_row["REQUEST_STATUS"])
-        )
+        request_status = st.text_input("Request Status", value=request_row.get("REQUEST_STATUS", ""))
     with col2:
-        request_type = st.selectbox(
-            "Request Type",
-            df["IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY"].dropna().unique().tolist() if "IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY" in df.columns else [],
-            index=0 if pd.isna(request_row.get("IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY")) else
-            df["IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY"].dropna().unique().tolist().index(
-                request_row["IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY"])
-        )
+        request_type = st.text_input("Request Type", value=request_row.get("IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", ""))
         date_received = st.date_input("Date Request Received",
                                       pd.to_datetime(request_row.get("DATE_REQUEST_RECEIVED_X", date.today())))
 
@@ -177,13 +153,13 @@ def show_request_form_editor():
     else:
         st.info("No dataset info available for this request.")
 
-# Main app
-tab = st.tabs(["📊 Dashboard", "📋 View/Edit Requests", "📝 Request Form Editor", "📥 Import Excel"])
-if tab[0]:
+# App Tabs
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📋 View/Edit Requests", "📝 Request Form Editor", "📥 Import Excel"])
+with tab1:
     show_dashboard()
-elif tab[1]:
+with tab2:
     show_view_requests()
-elif tab[2]:
+with tab3:
     show_request_form_editor()
-elif tab[3]:
+with tab4:
     show_import_export()
