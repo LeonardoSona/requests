@@ -68,19 +68,29 @@ def show_view_requests():
         st.warning("No data available. Please upload a file.")
         return
 
-    col1, col2 = st.columns(2)
-    search = col1.text_input("Search by NAME or EMAIL")
-    request_id_filter = col2.text_input("Filter by REQUEST_ID")
+    with st.expander("🔍 Advanced Filters", expanded=True):
+        col1, col2, col3, col4 = st.columns(4)
+        request_id_filter = col1.text_input("Filter by REQUEST_ID")
+        dataset_id_filter = col2.text_input("Filter by DATASET_ID")
+        request_status_filter = col3.text_input("Filter by REQUEST_STATUS")
+        dataset_status_filter = col4.text_input("Filter by DATASET_STATUS")
 
     filtered_df = df.copy()
-    if search:
-        filtered_df = filtered_df[
-            filtered_df["NAME"].str.contains(search, case=False, na=False) |
-            filtered_df["EMAIL"].str.contains(search, case=False, na=False)
-        ]
     if request_id_filter:
         filtered_df = filtered_df[
             filtered_df["REQUEST_ID"].astype(str).str.contains(request_id_filter, case=False, na=False)
+        ]
+    if dataset_id_filter and "DATASET_ID" in df.columns:
+        filtered_df = filtered_df[
+            filtered_df["DATASET_ID"].astype(str).str.contains(dataset_id_filter, case=False, na=False)
+        ]
+    if request_status_filter and "REQUEST_STATUS" in df.columns:
+        filtered_df = filtered_df[
+            filtered_df["REQUEST_STATUS"].astype(str).str.contains(request_status_filter, case=False, na=False)
+        ]
+    if dataset_status_filter and "DATASET_STATUS" in df.columns:
+        filtered_df = filtered_df[
+            filtered_df["DATASET_STATUS"].astype(str).str.contains(dataset_status_filter, case=False, na=False)
         ]
 
     st.markdown("### 🧩 Select Columns to Display/Edit")
@@ -100,8 +110,9 @@ def show_view_requests():
 
     if st.button("💾 Save Changes"):
         for idx, row in edited_df.iterrows():
-            mask = (st.session_state.requests["REQUEST_ID"] == row["REQUEST_ID"]) & \
-                   (st.session_state.requests["DATASET_ID"] == row["DATASET_ID"])
+            mask = (st.session_state.requests["REQUEST_ID"] == row["REQUEST_ID"])
+            if "DATASET_ID" in row:
+                mask &= (st.session_state.requests["DATASET_ID"] == row["DATASET_ID"])
             for col in columns_to_display:
                 st.session_state.requests.loc[mask, col] = row[col]
         st.success("✅ Changes saved.")
