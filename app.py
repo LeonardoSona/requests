@@ -133,49 +133,59 @@ def show_view_requests():
 
     df = st.session_state.requests.copy()
     if df.empty:
-        st.warning("No data available. Please upload first.")
+        st.warning("No data available. Please upload a file.")
         return
 
-    # Unique rows based on REQUEST_ID + DATASET_ID
+    # Create a unique key if both REQUEST_ID and DATASET_ID are present
     if "REQUEST_ID" in df.columns and "DATASET_ID" in df.columns:
         df["UNIQUE_KEY"] = df["REQUEST_ID"].astype(str) + "_" + df["DATASET_ID"].astype(str)
     else:
         df["UNIQUE_KEY"] = df.index.astype(str)
 
-    with st.expander("🔍 Filters", expanded=False):
+    # Filter section
+    with st.expander("🔍 Filters", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            search = st.text_input("Search NAME or EMAIL")
+            search = st.text_input("Search by NAME or EMAIL")
         with col2:
             request_id_filter = st.text_input("Filter by REQUEST_ID")
 
-        if search:
-            df = df[df["NAME"].str.contains(search, case=False, na=False) | df["EMAIL"].str.contains(search, case=False, na=False)]
-        if request_id_filter:
-            df = df[df["REQUEST_ID"].astype(str).str.contains(request_id_filter, case=False, na=False)]
+    filtered_df = df.copy()
+    if search:
+        filtered_df = filtered_df[
+            filtered_df["NAME"].str.contains(search, case=False, na=False) |
+            filtered_df["EMAIL"].str.contains(search, case=False, na=False)
+        ]
+    if request_id_filter:
+        filtered_df = filtered_df[
+            filtered_df["REQUEST_ID"].astype(str).str.contains(request_id_filter, case=False, na=False)
+        ]
 
-    # Dynamic column selector
-    with st.expander("🧩 Select Columns to Display", expanded=True):
-        columns_to_display = st.multiselect(
-            "Pick columns to show/edit",
-            options=df.columns.tolist(),
-            default=["REQUEST_ID", "DATASET_ID", "NAME", "EMAIL", "REQUEST_STATUS"]
-        )
-        df_display = df[columns_to_display + ["UNIQUE_KEY"]]  # Always include unique key for edit tracking
+    # Column picker
+    st.markdown("### 🧩 Select Columns to Display/Edit")
+    columns_to_display = st.multiselect(
+        "Pick columns",
+        options=[col for col in filtered_df.columns if col != "UNIQUE_KEY"],
+        default=["REQUEST_ID", "DATASET_ID", "NAME", "EMAIL", "REQUEST_STATUS"]
+    )
 
-    st.markdown("### ✏️ Edit Below and Click Save")
-    edited_df = st.data_editor(
-        df_display.set_index("UNIQUE_KEY"),
-        use_container_width=True,
-        num_rows="dynamic",
-        key="editor"
-    ).reset_index()
+    if not columns_to_display:
+        st.info("Please select at least one column to display.")
+        return
+
+    edit_df = filtered_df[["UNIQUE_KEY"] + columns_to_display].copy()
+    edit_df = edit_df.set_index("UNIQUE_KEY")
+
+    st.markdown("### ✏️ Editable Table")
+    edited_df = st.data_editor(edit_df, num_rows="dynamic", use_container_width=True).reset_index()
 
     if st.button("💾 Save Changes"):
         for _, row in edited_df.iterrows():
-            mask = (st.session_state.requests["REQUEST_ID"].astype(str) + "_" + st.session_state.requests["DATASET_ID"].astype(str)) == row["UNIQUE_KEY"]
+            mask = (st.session_state.requests["REQUEST_ID"].astype(str) + "_" +
+                    st.session_state.requests["DATASET_ID"].astype(str)) == row["UNIQUE_KEY"]
             for col in columns_to_display:
-                st.session_state.requests.loc[mask, col] = row[col]
+                if col in st.session_state.requests.columns:
+                    st.session_state.requests.loc[mask, col] = row[col]
         st.success("✅ Changes saved.")
 
 
