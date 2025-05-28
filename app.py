@@ -114,10 +114,10 @@ def show_request_form_editor():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 4])
     with col1:
-        if st.button("⬅️"):
+        if st.button("⬅️ Previous Request ID"):
             st.session_state.selected_index = (st.session_state.selected_index - 1) % num_requests
     with col2:
-        if st.button("➡️"):
+        if st.button("➡️ Next Request ID"):
             st.session_state.selected_index = (st.session_state.selected_index + 1) % num_requests
     with col3:
         selected_id = st.selectbox("Select Request ID", unique_requests, index=st.session_state.selected_index)
