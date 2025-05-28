@@ -122,7 +122,7 @@ def show_request_form_editor():
     with col3:
         selected_id = st.selectbox("Select Request ID", unique_requests, index=st.session_state.selected_index)
         st.session_state.selected_index = unique_requests.index(selected_id)
-        
+            
 
     req_df = df[df["REQUEST_ID"] == selected_id].copy()
     if req_df.empty:
