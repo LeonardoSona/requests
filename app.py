@@ -137,7 +137,7 @@ def show_request_form_editor():
         st.info("No dataset info available for this request.")
 
 # App Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📋 View/Edit Requests", "📝 Request Form Editor", "📥 Import Excel"])
+tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📋 Request Form Editor", "📥 Import Excel"])
 with tab1:
     show_dashboard()
 with tab2:
