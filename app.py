@@ -52,23 +52,39 @@ def initialize_session_state():
 def show_import_export():
     st.title("📥 Upload Excel to Start")
     uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx", "xls"])
+
     if uploaded_file:
         try:
             excel_data = pd.read_excel(uploaded_file, sheet_name=None)
-            if 'Requests' in excel_data:
-                st.session_state.requests = excel_data['Requests']
-                max_id = st.session_state.requests['REQUEST_ID'].dropna().str.extract(r"REQ-(\d+)").astype(float).max()[0]
+            st.write("📄 Found sheets:", list(excel_data.keys()))  # 🔍 Debug line
+
+            # Handle flexible sheet name (e.g., "requests", "Requests", "REQUESTS")
+            sheet_key = [k for k in excel_data if k.lower() == 'requests']
+            if sheet_key:
+                df = excel_data[sheet_key[0]]
+                st.write("✅ Preview of 'Requests':")
+                st.dataframe(df.head())  # 🔍 Preview
+
+                st.session_state.requests = df
+
+                max_id = df['REQUEST_ID'].dropna().str.extract(r"REQ-(\\d+)").astype(float).max()[0]
                 st.session_state.last_request_id = int(max_id) if pd.notna(max_id) else 0
+
+            else:
+                st.error("❌ Sheet 'Requests' not found. Please check your Excel file.")
+
             if 'Datasets' in excel_data:
                 st.session_state.datasets = excel_data['Datasets']
-                max_id = st.session_state.datasets['DATASET_ID'].dropna().str.extract(r"DS-(\d+)").astype(float).max()[0]
+                max_id = st.session_state.datasets['DATASET_ID'].dropna().str.extract(r"DS-(\\d+)").astype(float).max()[0]
                 st.session_state.last_dataset_id = int(max_id) if pd.notna(max_id) else 0
+
             st.session_state.file_uploaded = True
             st.success("✅ File successfully uploaded and data loaded!")
             st.rerun()
+
         except Exception as e:
             st.error(f"Failed to read Excel file: {str(e)}")
-
+            
 # Dashboard
 def show_dashboard():
     st.title("📊 IHD Request Dashboard")
