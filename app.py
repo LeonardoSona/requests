@@ -136,24 +136,48 @@ def show_view_requests():
         st.warning("No data available. Please upload first.")
         return
 
+    # Unique rows based on REQUEST_ID + DATASET_ID
+    if "REQUEST_ID" in df.columns and "DATASET_ID" in df.columns:
+        df["UNIQUE_KEY"] = df["REQUEST_ID"].astype(str) + "_" + df["DATASET_ID"].astype(str)
+    else:
+        df["UNIQUE_KEY"] = df.index.astype(str)
+
     with st.expander("🔍 Filters", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             search = st.text_input("Search NAME or EMAIL")
         with col2:
-            status_filter = st.selectbox("Filter by STATUS", ["All"] + sorted(df["REQUEST_STATUS"].dropna().unique().tolist()) if "REQUEST_STATUS" in df.columns else ["All"])
+            request_id_filter = st.text_input("Filter by REQUEST_ID")
 
         if search:
             df = df[df["NAME"].str.contains(search, case=False, na=False) | df["EMAIL"].str.contains(search, case=False, na=False)]
-        if status_filter != "All":
-            df = df[df["REQUEST_STATUS"] == status_filter]
+        if request_id_filter:
+            df = df[df["REQUEST_ID"].astype(str).str.contains(request_id_filter, case=False, na=False)]
 
-    st.markdown("### ✏️ Edit Table Below")
-    edited = st.data_editor(df, use_container_width=True, num_rows="dynamic", key="editable_table")
+    # Dynamic column selector
+    with st.expander("🧩 Select Columns to Display", expanded=True):
+        columns_to_display = st.multiselect(
+            "Pick columns to show/edit",
+            options=df.columns.tolist(),
+            default=["REQUEST_ID", "DATASET_ID", "NAME", "EMAIL", "REQUEST_STATUS"]
+        )
+        df_display = df[columns_to_display + ["UNIQUE_KEY"]]  # Always include unique key for edit tracking
 
-    if not edited.equals(st.session_state.requests):
-        st.session_state.requests.update(edited)
-        st.success("✅ Changes saved in memory.")
+    st.markdown("### ✏️ Edit Below and Click Save")
+    edited_df = st.data_editor(
+        df_display.set_index("UNIQUE_KEY"),
+        use_container_width=True,
+        num_rows="dynamic",
+        key="editor"
+    ).reset_index()
+
+    if st.button("💾 Save Changes"):
+        for _, row in edited_df.iterrows():
+            mask = (st.session_state.requests["REQUEST_ID"].astype(str) + "_" + st.session_state.requests["DATASET_ID"].astype(str)) == row["UNIQUE_KEY"]
+            for col in columns_to_display:
+                st.session_state.requests.loc[mask, col] = row[col]
+        st.success("✅ Changes saved.")
+
 
 # Main app
 def main():
