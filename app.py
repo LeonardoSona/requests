@@ -69,13 +69,46 @@ def show_import_export():
         except Exception as e:
             st.error(f"Failed to read Excel file: {str(e)}")
 
-# Dashboard (sample implementation)
+# Dashboard
 def show_dashboard():
     st.title("📊 IHD Request Dashboard")
-    st.metric("Total Requests", len(st.session_state.requests))
-    st.metric("Total Datasets", len(st.session_state.datasets))
-    if len(st.session_state.requests) > 0:
-        st.dataframe(st.session_state.requests.head(), use_container_width=True)
+
+    requests_df = st.session_state.requests
+    datasets_df = st.session_state.datasets
+
+    # Fallback info if empty
+    if requests_df.empty:
+        st.warning("No request data loaded. Please upload an Excel file with a 'Requests' sheet.")
+        return
+
+    # Metrics
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Requests", len(requests_df))
+    col2.metric("Approved Requests", len(requests_df[requests_df["REQUEST_STATUS"] == "Approved"]))
+    col3.metric("Pending Requests", len(requests_df[requests_df["REQUEST_STATUS"].isin(["Draft", "Submitted", "In Review"])]))
+
+    st.markdown("### 📅 Recent Requests")
+    try:
+        # Ensure date column is proper datetime
+        requests_df['DATE_REQUEST_RECEIVED'] = pd.to_datetime(requests_df['DATE_REQUEST_RECEIVED'], errors='coerce')
+        sorted_df = requests_df.sort_values(by='DATE_REQUEST_RECEIVED', ascending=False)
+        st.dataframe(sorted_df.head(10)[['REQUEST_ID', 'NAME', 'EMAIL', 'REQUEST_STATUS', 'DATE_REQUEST_RECEIVED']], use_container_width=True)
+    except Exception as e:
+        st.error(f"Failed to render recent requests: {e}")
+        st.dataframe(requests_df.head(), use_container_width=True)
+
+    st.markdown("### 📊 Request Status Distribution")
+    status_counts = requests_df['REQUEST_STATUS'].value_counts()
+    if not status_counts.empty:
+        fig = px.pie(
+            names=status_counts.index,
+            values=status_counts.values,
+            title="Request Status Distribution"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No valid 'REQUEST_STATUS' values to plot.")
+
 
 # Main app
 def main():
@@ -91,6 +124,7 @@ def main():
         show_dashboard()
     elif page == "Import/Export":
         show_import_export()
+        
 
 if __name__ == "__main__":
     main()
