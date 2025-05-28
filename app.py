@@ -67,7 +67,7 @@ def extract_max_id(df, col_name, prefix):
     if col_name in df.columns:
         try:
             return int(
-                df[col_name].dropna().astype(str).str.extract(fr"{prefix}(\d+)").astype(float).max()[0]
+                df[col_name].dropna().astype(str).str.extract(fr"{prefix}(\\d+)").astype(float).max()[0]
             )
         except:
             return 0
@@ -75,7 +75,7 @@ def extract_max_id(df, col_name, prefix):
 
 # Upload Excel
 def show_import_export():
-    st.title("📥 Upload Excel File")
+    st.subheader("📥 Upload Excel File")
     uploaded_file = st.file_uploader("Upload Excel", type=["xlsx", "xls"])
     if uploaded_file:
         try:
@@ -100,7 +100,7 @@ def show_import_export():
 
 # Dashboard
 def show_dashboard():
-    st.title("📊 IHD Request Dashboard")
+    st.subheader("📊 Dashboard")
     df = st.session_state.requests
     if df.empty:
         st.warning("No data loaded. Please upload a file.")
@@ -127,6 +127,34 @@ def show_dashboard():
         fig = px.pie(names=status_counts.index, values=status_counts.values, title="Request Status Distribution")
         st.plotly_chart(fig, use_container_width=True)
 
+# View/Edit
+def show_view_requests():
+    st.subheader("📋 View & Edit Requests")
+
+    df = st.session_state.requests.copy()
+    if df.empty:
+        st.warning("No data available. Please upload first.")
+        return
+
+    with st.expander("🔍 Filters", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            search = st.text_input("Search NAME or EMAIL")
+        with col2:
+            status_filter = st.selectbox("Filter by STATUS", ["All"] + sorted(df["REQUEST_STATUS"].dropna().unique().tolist()) if "REQUEST_STATUS" in df.columns else ["All"])
+
+        if search:
+            df = df[df["NAME"].str.contains(search, case=False, na=False) | df["EMAIL"].str.contains(search, case=False, na=False)]
+        if status_filter != "All":
+            df = df[df["REQUEST_STATUS"] == status_filter]
+
+    st.markdown("### ✏️ Edit Table Below")
+    edited = st.data_editor(df, use_container_width=True, num_rows="dynamic", key="editable_table")
+
+    if not edited.equals(st.session_state.requests):
+        st.session_state.requests.update(edited)
+        st.success("✅ Changes saved in memory.")
+
 # Main app
 def main():
     initialize_session_state()
@@ -134,11 +162,13 @@ def main():
         show_import_export()
         return
 
-    st.sidebar.title("🏥 IHD Request System")
-    page = st.sidebar.selectbox("Navigate to:", ["Dashboard", "Import/Export"])
-    if page == "Dashboard":
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📋 View/Edit Requests", "📥 Import Excel"])
+
+    with tab1:
         show_dashboard()
-    elif page == "Import/Export":
+    with tab2:
+        show_view_requests()
+    with tab3:
         show_import_export()
 
 if __name__ == "__main__":
