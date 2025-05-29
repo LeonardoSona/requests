@@ -130,6 +130,12 @@ def show_request_form_editor():
     req_df = df[df["REQUEST_ID"] == selected_id].copy()
     request_row = req_df.iloc[0].copy()
 
+    st.markdown("### ✏️ Request Details")
+    req_columns = req_df.columns.tolist()
+    selected_req_cols = st.multiselect("Choose columns to display/edit for the request", req_columns,
+                                       default=["NAME", "EMAIL", "REQUEST_STATUS", "IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", "DATE_REQUEST_RECEIVED_X"])
+
+    # 🔍 Requests with Missing Fields
     st.markdown("### 🔍 Requests with Missing Fields")
     flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
     if not flagged_df.empty:
@@ -137,11 +143,6 @@ def show_request_form_editor():
         st.dataframe(flagged_df[["REQUEST_ID"] + selected_req_cols], use_container_width=True)
     else:
         st.success("✅ No missing fields in selected columns.")
-    
-    st.markdown("### ✏️ Request Details")
-    req_columns = req_df.columns.tolist()
-    selected_req_cols = st.multiselect("Choose columns to display/edit for the request", req_columns,
-                                       default=["NAME", "EMAIL", "REQUEST_STATUS", "IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", "DATE_REQUEST_RECEIVED_X"])
 
     # Determine missing values in selected fields
     missing_fields = [col for col in selected_req_cols if pd.isna(request_row.get(col)) or str(request_row.get(col)).strip() == ""]
