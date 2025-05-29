@@ -31,15 +31,6 @@ def compute_enhanced_metrics(df):
 
     return metrics
 
-# Utility: Flag missing fields
-def add_missing_field_flags(df: pd.DataFrame, fields_to_check: list) -> pd.DataFrame:
-    def flag_row(row):
-        return [field for field in fields_to_check if pd.isna(row.get(field)) or row.get(field) == ""]
-
-    df = df.copy()
-    df["MISSING_FIELDS"] = df.apply(flag_row, axis=1)
-    return df
-
 # Import Excel
 def show_import_export():
     st.subheader("📥 Upload Excel File")
@@ -99,7 +90,7 @@ def show_dashboard():
         )
         st.plotly_chart(fig, use_container_width=True)
 
-# Request Form Editor with arrow navigation
+# Request Form Editor with DQ flag icons and status filter
 def show_request_form_editor():
     st.subheader("📝 Request Form Editor")
     if "selected_index" not in st.session_state:
@@ -109,20 +100,18 @@ def show_request_form_editor():
         st.warning("No request data available.")
         return
 
-    # Request status filter
+    # Filter by request status
     statuses = sorted(df["REQUEST_STATUS"].dropna().unique().tolist()) if "REQUEST_STATUS" in df.columns else []
-    selected_status = st.selectbox("Filter by Request Status", ["All"] + statuses, key="request_status_filter")
+    selected_status = st.selectbox("Filter by Request Status", ["All"] + statuses, key="status_filter_form")
     if selected_status != "All":
         df = df[df["REQUEST_STATUS"] == selected_status]
-    
+
     unique_requests = sorted(df["REQUEST_ID"].dropna().unique().tolist())
     num_requests = len(unique_requests)
-
     if num_requests == 0:
         st.warning("No valid Request IDs found.")
         return
 
-    # Ensure index is valid
     if st.session_state.selected_index >= num_requests:
         st.session_state.selected_index = 0
 
@@ -137,13 +126,8 @@ def show_request_form_editor():
     with col3:
         selected_id = st.selectbox("Select Request ID", unique_requests, index=st.session_state.selected_index)
         st.session_state.selected_index = unique_requests.index(selected_id)
-            
 
     req_df = df[df["REQUEST_ID"] == selected_id].copy()
-    if req_df.empty:
-        st.info("No data found for this Request ID.")
-        return
-
     request_row = req_df.iloc[0].copy()
 
     st.markdown("### ✏️ Request Details")
@@ -151,16 +135,19 @@ def show_request_form_editor():
     selected_req_cols = st.multiselect("Choose columns to display/edit for the request", req_columns,
                                        default=["NAME", "EMAIL", "REQUEST_STATUS", "IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", "DATE_REQUEST_RECEIVED_X"])
 
+    # Determine missing values in selected fields
+    missing_fields = [col for col in selected_req_cols if pd.isna(request_row.get(col)) or str(request_row.get(col)).strip() == ""]
+
     req_data = {}
     for col in selected_req_cols:
+        label = f"{col} {'⚠️' if col in missing_fields else ''}"
         value = request_row.get(col, "")
         if "DATE" in col.upper():
             parsed_date = pd.to_datetime(value, errors="coerce")
-            if pd.isna(parsed_date):
-                parsed_date = date.today()
-            req_data[col] = st.date_input(col, value=pd.to_datetime(value, errors="coerce") if pd.notna(value) else None)
+            parsed_date = parsed_date if pd.notna(parsed_date) else date.today()
+            req_data[col] = st.date_input(label, value=parsed_date)
         else:
-            req_data[col] = st.text_input(col, value)
+            req_data[col] = st.text_input(label, value)
 
     if st.button("💾 Save Request"):
         idxs = df[df["REQUEST_ID"] == selected_id].index
@@ -176,29 +163,14 @@ def show_request_form_editor():
                                           default=["DATASET_ID", "DATASET_NAME", "DATASET_STATUS"])
         dataset_df = req_df[selected_ds_cols].copy()
         st.dataframe(dataset_df, use_container_width=True)
-    else:
-        st.info("No dataset info available for this request.")
-    
-    st.markdown("### 🔍 Data Quality Flags")
-    missing_check_fields = st.multiselect("Fields to check for missing values", req_columns)
-    
-    if missing_check_fields:
-        flagged_requests = []
-        for idx, row in df.iterrows():
-            for field in missing_check_fields:
-                if pd.isna(row.get(field)) or str(row.get(field)).strip() == "":
-                    flagged_requests.append(row["REQUEST_ID"])
-                    break  # Only flag once per row
-    
-        flagged_requests = list(set(flagged_requests))
-    
-        if flagged_requests:
-            dq_df = df[df["REQUEST_ID"].isin(flagged_requests)][["REQUEST_ID"] + missing_check_fields]
-            st.markdown("#### ⚠️ Requests with Missing Fields")
-            st.dataframe(dq_df, use_container_width=True)
-        else:
-            st.success("✅ No missing fields in selected columns.")
 
+    st.markdown("### 🔍 Requests with Missing Fields")
+    flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
+    if not flagged_df.empty:
+        st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
+        st.dataframe(flagged_df[["REQUEST_ID"] + selected_req_cols], use_container_width=True)
+    else:
+        st.success("✅ No missing fields in selected columns.")
 
 # App Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📋 Request Form Editor", "📥 Import Excel"])
