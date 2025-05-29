@@ -200,36 +200,6 @@ def show_request_form_editor():
             st.success("✅ No missing fields in selected columns.")
 
 
-    # Select fields to flag
-    all_columns = df.columns.tolist()
-    critical_fields = st.multiselect(
-        "Select fields to check for missing values",
-        options=all_columns,
-        default=["NAME", "EMAIL", "REQUEST_STATUS"]
-    )
-
-    # Filter by Request Status
-    if "REQUEST_STATUS" in df.columns:
-        statuses = df["REQUEST_STATUS"].dropna().unique().tolist()
-        selected_status = st.selectbox("Filter by Request Status", ["All"] + statuses)
-        filtered_df = df if selected_status == "All" else df[df["REQUEST_STATUS"] == selected_status]
-    else:
-        filtered_df = df
-
-    # Flag rows with missing critical fields
-    def find_missing_fields(row):
-        return [col for col in critical_fields if pd.isna(row.get(col)) or row.get(col) == ""]
-
-    filtered_df["MISSING_FIELDS"] = filtered_df.apply(find_missing_fields, axis=1)
-    flagged = filtered_df[filtered_df["MISSING_FIELDS"].map(len) > 0]
-
-    if flagged.empty:
-        st.success("✅ No missing fields based on selected criteria.")
-    else:
-        st.warning(f"⚠️ {len(flagged)} request(s) have missing fields.")
-        st.dataframe(flagged[["REQUEST_ID", "MISSING_FIELDS"]], use_container_width=True)
-
-
 # App Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📋 Request Form Editor", "📥 Import Excel"])
 with tab1:
