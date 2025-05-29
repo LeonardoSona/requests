@@ -116,7 +116,7 @@ def show_request_form_editor():
     df = add_missing_field_flags(df, required_fields)
 
     # Request status filter
-    all_statuses = sorted(df["REQUEST_STATUS"].dropna().unique().tolist())
+    statuses = sorted(df["REQUEST_STATUS"].dropna().unique().tolist()) if "REQUEST_STATUS" in df.columns else []
     selected_status = st.selectbox("Filter by Request Status", ["All"] + statuses, key="request_status_filter")
     if selected_status != "All":
         df = df[df["REQUEST_STATUS"] == selected_status]
