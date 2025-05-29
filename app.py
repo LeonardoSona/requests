@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import date
 
-st.set_page_config(page_title="IHD Request Management", layout="wide")
+st.set_page_config(page_title="Request Management", layout="wide")
 
 # Initialize session state
 if "requests" not in st.session_state:
@@ -30,6 +30,15 @@ def compute_enhanced_metrics(df):
     metrics['overdue_count'] = df['OVERDUE'].sum()
 
     return metrics
+
+# Utility: Flag missing fields
+def add_missing_field_flags(df: pd.DataFrame, fields_to_check: list) -> pd.DataFrame:
+    def flag_row(row):
+        return [field for field in fields_to_check if pd.isna(row.get(field)) or row.get(field) == ""]
+
+    df = df.copy()
+    df["MISSING_FIELDS"] = df.apply(flag_row, axis=1)
+    return df
 
 # Import Excel
 def show_import_export():
@@ -100,6 +109,18 @@ def show_request_form_editor():
         st.warning("No request data available.")
         return
 
+    # Data quality flag setup
+    st.markdown("### 🔍 Data Quality Flags")
+    required_fields = st.multiselect("Fields to check for missing values", df.columns.tolist(),
+                                     default=["NAME", "EMAIL", "REQUEST_STATUS"])
+    df = add_missing_field_flags(df, required_fields)
+
+    # Request status filter
+    all_statuses = sorted(df["REQUEST_STATUS"].dropna().unique().tolist())
+    selected_status = st.selectbox("Filter by Request Status", ["All"] + all_statuses)
+    if selected_status != "All":
+        df = df[df["REQUEST_STATUS"] == selected_status]
+    
     unique_requests = sorted(df["REQUEST_ID"].dropna().unique().tolist())
     num_requests = len(unique_requests)
 
