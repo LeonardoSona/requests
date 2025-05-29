@@ -161,7 +161,10 @@ def show_request_form_editor():
     for col in selected_req_cols:
         value = request_row.get(col, "")
         if "DATE" in col.upper():
-            req_data[col] = st.date_input(col, value=pd.to_datetime(value, errors="coerce") if value else date.today())
+            parsed_date = pd.to_datetime(value, errors="coerce")
+            if pd.isna(parsed_date):
+                parsed_date = date.today()
+            req_data[col] = st.date_input(col, value=parsed_date)
         else:
             req_data[col] = st.text_input(col, value)
 
