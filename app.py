@@ -117,7 +117,7 @@ def show_request_form_editor():
 
     # Request status filter
     all_statuses = sorted(df["REQUEST_STATUS"].dropna().unique().tolist())
-    selected_status = st.selectbox("Filter by Request Status", ["All"] + all_statuses)
+    selected_status = st.selectbox("Filter by Request Status", ["All"] + statuses, key="request_status_filter")
     if selected_status != "All":
         df = df[df["REQUEST_STATUS"] == selected_status]
     
