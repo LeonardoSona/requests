@@ -140,14 +140,18 @@ def show_request_form_editor():
 
     req_data = {}
     for col in selected_req_cols:
-        label = f"{col} {'⚠️' if col in missing_fields else ''}"
-        value = request_row.get(col, "")
-        if "DATE" in col.upper():
-            parsed_date = pd.to_datetime(value, errors="coerce")
-            parsed_date = parsed_date if pd.notna(parsed_date) else date.today()
-            req_data[col] = st.date_input(label, value=parsed_date)
-        else:
-            req_data[col] = st.text_input(label, value)
+        is_missing = col in missing_fields
+        label_col, input_col = st.columns([3, 7])
+        with label_col:
+            st.markdown(f"**{col}** {'⚠️' if is_missing else ''}")
+        with input_col:
+            value = request_row.get(col, "")
+            if "DATE" in col.upper():
+                parsed_date = pd.to_datetime(value, errors="coerce")
+                parsed_date = parsed_date if pd.notna(parsed_date) else date.today()
+                req_data[col] = st.date_input("", value=parsed_date, key=f"date_{col}")
+            else:
+                req_data[col] = st.text_input("", value, key=f"text_{col}")
 
     if st.button("💾 Save Request"):
         idxs = df[df["REQUEST_ID"] == selected_id].index
