@@ -164,7 +164,7 @@ def show_request_form_editor():
             parsed_date = pd.to_datetime(value, errors="coerce")
             if pd.isna(parsed_date):
                 parsed_date = date.today()
-            req_data[col] = st.date_input(col, value=parsed_date)
+            req_data[col] = st.date_input(col, value=pd.to_datetime(value, errors="coerce") if pd.notna(value) else None)
         else:
             req_data[col] = st.text_input(col, value)
 
