@@ -130,6 +130,14 @@ def show_request_form_editor():
     req_df = df[df["REQUEST_ID"] == selected_id].copy()
     request_row = req_df.iloc[0].copy()
 
+    st.markdown("### 🔍 Requests with Missing Fields")
+    flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
+    if not flagged_df.empty:
+        st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
+        st.dataframe(flagged_df[["REQUEST_ID"] + selected_req_cols], use_container_width=True)
+    else:
+        st.success("✅ No missing fields in selected columns.")
+    
     st.markdown("### ✏️ Request Details")
     req_columns = req_df.columns.tolist()
     selected_req_cols = st.multiselect("Choose columns to display/edit for the request", req_columns,
@@ -168,13 +176,7 @@ def show_request_form_editor():
         dataset_df = req_df[selected_ds_cols].copy()
         st.dataframe(dataset_df, use_container_width=True)
 
-    st.markdown("### 🔍 Requests with Missing Fields")
-    flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
-    if not flagged_df.empty:
-        st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
-        st.dataframe(flagged_df[["REQUEST_ID"] + selected_req_cols], use_container_width=True)
-    else:
-        st.success("✅ No missing fields in selected columns.")
+    
 
 # App Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📋 Request Form Editor", "📥 Import Excel"])
