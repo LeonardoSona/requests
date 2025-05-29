@@ -109,12 +109,6 @@ def show_request_form_editor():
         st.warning("No request data available.")
         return
 
-    # Data quality flag setup
-    st.markdown("### 🔍 Data Quality Flags")
-    required_fields = st.multiselect("Fields to check for missing values", df.columns.tolist(),
-                                     default=["NAME", "EMAIL", "REQUEST_STATUS"])
-    df = add_missing_field_flags(df, required_fields)
-
     # Request status filter
     statuses = sorted(df["REQUEST_STATUS"].dropna().unique().tolist()) if "REQUEST_STATUS" in df.columns else []
     selected_status = st.selectbox("Filter by Request Status", ["All"] + statuses, key="request_status_filter")
@@ -185,7 +179,26 @@ def show_request_form_editor():
     else:
         st.info("No dataset info available for this request.")
     
-    st.markdown("### 🚩 Data Quality Flags")
+    st.markdown("### 🔍 Data Quality Flags")
+    missing_check_fields = st.multiselect("Fields to check for missing values", req_columns)
+    
+    if missing_check_fields:
+        flagged_requests = []
+        for idx, row in df.iterrows():
+            for field in missing_check_fields:
+                if pd.isna(row.get(field)) or str(row.get(field)).strip() == "":
+                    flagged_requests.append(row["REQUEST_ID"])
+                    break  # Only flag once per row
+    
+        flagged_requests = list(set(flagged_requests))
+    
+        if flagged_requests:
+            dq_df = df[df["REQUEST_ID"].isin(flagged_requests)][["REQUEST_ID"] + missing_check_fields]
+            st.markdown("#### ⚠️ Requests with Missing Fields")
+            st.dataframe(dq_df, use_container_width=True)
+        else:
+            st.success("✅ No missing fields in selected columns.")
+
 
     # Select fields to flag
     all_columns = df.columns.tolist()
