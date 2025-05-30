@@ -205,8 +205,26 @@ def show_request_form_editor():
 
     st.markdown("### ✏️ Request Details")
     req_columns = req_df.columns.tolist()
-    selected_req_cols = st.multiselect("Choose columns to display/edit for the request", req_columns,
-                                       default=["NAME", "EMAIL", "REQUEST_STATUS", "IS_THIS_A_NEW_REQUEST_AMENDMENT_OR_RETROSPECTIVE_ENTRY", "DATE_REQUEST_RECEIVED_X"])
+    
+    milestone_columns = [
+    "NAME",
+    "REQUEST_STATUS",
+    "DATE_REQUEST_RECEIVED_X",
+    "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
+    "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
+    "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
+    "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
+    "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
+    "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
+    "V1_PROPOSAL_COMPLETE_DATE",
+    "DATE_ACCESS_GRANTED_X"
+    ]
+
+    selected_req_cols = st.multiselect(
+        "Choose columns to display/edit for the request",
+        req_columns,
+        default=[col for col in milestone_columns if col in req_columns]
+    )
 
     # 🔍 Requests with Missing Fields
     st.markdown("### 🔍 Requests with Missing Fields")
