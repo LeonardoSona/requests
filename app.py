@@ -287,8 +287,10 @@ def show_request_form_editor():
             value = request_row.get(col, "")
             if "DATE" in col.upper():
                 parsed_date = pd.to_datetime(value, errors="coerce")
-                parsed_date = parsed_date if pd.notna(parsed_date) else date.today()
-                req_data[col] = st.date_input("", value=parsed_date, key=f"date_{col}")
+                if pd.notna(parsed_date):
+                    req_data[col] = st.date_input("", value=parsed_date.date(), key=f"date_{col}")
+                else:
+                    req_data[col] = st.date_input("", value=None, key=f"date_{col}")
             else:
                 req_data[col] = st.text_input("", value, key=f"text_{col}")
 
