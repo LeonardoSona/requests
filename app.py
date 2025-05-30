@@ -12,14 +12,19 @@ if "requests" not in st.session_state:
 # Utility: Enhanced metrics
 def compute_enhanced_metrics(df):
     metrics = {}
-    df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df.get('DATE_REQUEST_RECEIVED_X'), errors='coerce')
-    df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df.get('DATE_ACCESS_GRANTED_X'), errors='coerce')
-    
-    # Moved here — compute cycle time before metrics
-    df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
 
-    metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
-    metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
+    if 'DATE_REQUEST_RECEIVED_X' in df.columns:
+        df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df['DATE_REQUEST_RECEIVED_X'], errors='coerce')
+    if 'DATE_ACCESS_GRANTED_X' in df.columns:
+        df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df['DATE_ACCESS_GRANTED_X'], errors='coerce')
+
+    if 'DATE_REQUEST_RECEIVED_X' in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
+        df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+        metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
+        metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
+    else:
+        metrics['avg_time_to_approval'] = None
+        metrics['median_time_to_approval'] = None
 
     if 'DATASET_STATUS' in df.columns:
         metrics['dataset_status_counts'] = df['DATASET_STATUS'].value_counts().to_dict()
