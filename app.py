@@ -155,21 +155,24 @@ def show_dashboard():
             fig4 = px.line(melted_summary, x='WEEK', y='Count', color='Metric', title='Submitted vs Completed vs In Progress Per Week')
             st.plotly_chart(fig4, use_container_width=True)
 
-        # Per-Step Cycle Times (if available)
-        step_columns = [
-            ("DATE_INITIAL_REVIEW", "Initial Review"),
-            ("DATE_SCIENTIFIC_REVIEW", "Scientific Review"),
-            ("DATE_DUG_REVIEW", "DUG Review"),
-            ("DATE_CURATION_COMPLETE", "Curation Complete")
+        # Phase-Level Cycle Times (matching your specification)
+        st.markdown("#### ⏱️ Phase-Level Cycle Times Per Week")
+        phase_calculations = [
+            ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
+            ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Decision"),
+            ("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM", "DATE_OF_DATA_USE_GOVERNANCE_DECISION", "Governance Review"),
+            ("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE", "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE", "Anonymization"),
+            ("DATE_OF_DATA_USE_GOVERNANCE_DECISION", "V1_PROPOSAL_COMPLETE_DATE", "Proposal")
         ]
         
-        for step_col, label in step_columns:
-            if step_col in df.columns:
-                df[step_col] = pd.to_datetime(df[step_col], errors='coerce')
-                df[f'{label}_DAYS'] = (df[step_col] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+        for start_col, end_col, label in phase_calculations:
+            if start_col in df.columns and end_col in df.columns:
+                df[start_col] = pd.to_datetime(df[start_col], errors='coerce')
+                df[end_col] = pd.to_datetime(df[end_col], errors='coerce')
+                df[f'{label}_DAYS'] = (df[end_col] - df[start_col]).dt.days
                 step_avg = df.dropna(subset=[f'{label}_DAYS']).groupby('WEEK')[f'{label}_DAYS'].mean().reset_index()
                 if not step_avg.empty:
-                    fig_step = px.line(step_avg, x='WEEK', y=f'{label}_DAYS', title=f'Average Time to {label} Per Week')
+                    fig_step = px.line(step_avg, x='WEEK', y=f'{label}_DAYS', title=f'Average Time for {label} Per Week')
                     st.plotly_chart(fig_step, use_container_width=True)
 
         # 🧩 Milestone-Based Cycle Durations
@@ -244,16 +247,11 @@ def show_request_form_editor():
     st.markdown("### ✏️ Request Details - Editable Table")
     req_columns = req_df.columns.tolist()
     
-    # Group columns by category for better UX
-    basic_info = ["REQUEST_ID", "NAME", "REQUEST_STATUS"]
-    timeline_dates = [col for col in req_columns if "DATE" in col.upper()]
-    dataset_fields = [col for col in req_columns if "DATASET" in col.upper()]
-    other_fields = [col for col in req_columns if col not in basic_info + timeline_dates + dataset_fields]
-    
-    # Pre-organize timeline dates in logical order
-    timeline_order = [
+    milestone_columns = [
+        "NAME",
+        "REQUEST_STATUS",
         "DATE_REQUEST_RECEIVED_X",
-        "DATE_SHARED_WITH_SCIENTIFIC_SPADM", 
+        "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
         "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
         "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
         "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
@@ -262,152 +260,22 @@ def show_request_form_editor():
         "V1_PROPOSAL_COMPLETE_DATE",
         "DATE_ACCESS_GRANTED_X"
     ]
-    ordered_timeline = [col for col in timeline_order if col in timeline_dates]
-    other_timeline = [col for col in timeline_dates if col not in timeline_order]
-    available_timeline = ordered_timeline + other_timeline
-    available_basic = [col for col in basic_info if col in req_columns]
+
+    selected_req_cols = st.multiselect(
+        "Choose columns to display/edit for the request",
+        req_columns,
+        default=[col for col in milestone_columns if col in req_columns]
+    )
     
-    # Smart column selection with organized tabs
-    st.markdown("#### 📋 Choose Fields to Display/Edit")
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Basic Info", "📅 Timeline", "📊 Datasets", "📄 Other Fields"])
-    
-    selected_basic = []
-    selected_timeline = []
-    selected_datasets = []
-    selected_other = []
-    
-    # Quick selection shortcuts - using session state to control selections
-    if 'field_preset' not in st.session_state:
-        st.session_state.field_preset = 'custom'
-    
-    st.markdown("#### 🚀 Quick Field Selection")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("📋 Essential Only", help="Select just the core fields"):
-            st.session_state.field_preset = 'essential'
-    
-    with col2:
-        if st.button("📅 Timeline Focus", help="Select timeline and status fields"):
-            st.session_state.field_preset = 'timeline'
-    
-    with col3:
-        if st.button("📊 Dataset Focus", help="Select dataset-related fields"):
-            st.session_state.field_preset = 'dataset'
-    
-    with col4:
-        if st.button("🎯 Select All", help="Select all available fields"):
-            st.session_state.field_preset = 'all'
-    
-    # Apply preset selections
-    if st.session_state.field_preset == 'essential':
-        selected_basic = [col for col in ["REQUEST_ID", "NAME", "REQUEST_STATUS"] if col in req_columns]
-        selected_timeline = [col for col in ["DATE_REQUEST_RECEIVED_X", "DATE_ACCESS_GRANTED_X"] if col in req_columns]
-        selected_datasets = []
-        selected_other = []
-    elif st.session_state.field_preset == 'timeline':
-        selected_basic = [col for col in ["REQUEST_ID", "REQUEST_STATUS"] if col in req_columns]
-        selected_timeline = ordered_timeline
-        selected_datasets = []
-        selected_other = []
-    elif st.session_state.field_preset == 'dataset':
-        selected_basic = [col for col in ["REQUEST_ID", "NAME"] if col in req_columns]
-        selected_timeline = []
-        selected_datasets = dataset_fields
-        selected_other = []
-    elif st.session_state.field_preset == 'all':
-        selected_basic = available_basic
-        selected_timeline = available_timeline
-        selected_datasets = dataset_fields
-        selected_other = other_fields
-    else:  # custom
-        with tab1:
-            st.markdown("**Core request information**")
-            available_basic = [col for col in basic_info if col in req_columns]
-            selected_basic = st.multiselect(
-                "Basic Information Fields",
-                available_basic,
-                default=available_basic,
-                key="basic_fields"
-            )
-        
-        with tab2:
-            st.markdown("**Request timeline and milestone dates**")
-            selected_timeline = st.multiselect(
-                "Timeline & Milestone Dates",
-                available_timeline,
-                default=ordered_timeline[:6] if len(ordered_timeline) >= 6 else ordered_timeline,
-                key="timeline_fields",
-                help="Dates are shown in logical workflow order"
-            )
-        
-        with tab3:
-            st.markdown("**Dataset-related information**")
-            if dataset_fields:
-                selected_datasets = st.multiselect(
-                    "Dataset Fields",
-                    dataset_fields,
-                    default=dataset_fields[:3] if len(dataset_fields) >= 3 else dataset_fields,
-                    key="dataset_fields"
-                )
-            else:
-                st.info("No dataset fields found in this data")
-                selected_datasets = []
-        
-        with tab4:
-            st.markdown("**Additional fields and metadata**")
-            if other_fields:
-                selected_other = st.multiselect(
-                    "Other Fields",
-                    other_fields,
-                    default=[],
-                    key="other_fields"
-                )
-            else:
-                st.info("No additional fields available")
-                selected_other = []
-    
-    # Reset to custom if user wants to manually select
-    if st.session_state.field_preset != 'custom':
-        if st.button("🔧 Custom Selection", help="Switch to manual field selection"):
-            st.session_state.field_preset = 'custom'
-            st.rerun()
-    
-    # Combine all selected columns and remove duplicates while preserving order
-    all_selected = selected_basic + selected_timeline + selected_datasets + selected_other
-    selected_req_cols = []
-    seen = set()
-    for col in all_selected:
-        if col not in seen:
-            selected_req_cols.append(col)
-            seen.add(col)
-    
-    # Show current preset and field information
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.session_state.field_preset != 'custom':
-            st.info(f"🎯 **Active Preset:** {st.session_state.field_preset.title()}")
-        else:
-            st.info("🔧 **Custom Selection Active**")
-    
-    with col2:
-        if selected_req_cols:
-            total_fields = len(selected_req_cols)
-            st.metric("📊 Selected Fields", total_fields)
-    
-    with col3:
-        if selected_req_cols:
-            completed_fields = sum(1 for col in selected_req_cols if pd.notna(request_row.get(col)) and str(request_row.get(col)).strip() != "")
-            completion_rate = (completed_fields / total_fields) * 100 if total_fields > 0 else 0
-            st.metric("✅ Completeness", f"{completion_rate:.1f}%")
+    # Show data completeness
+    if selected_req_cols:
+        completed_fields = sum(1 for col in selected_req_cols if pd.notna(request_row.get(col)) and str(request_row.get(col)).strip() != "")
+        completion_rate = (completed_fields / len(selected_req_cols)) * 100
+        st.metric("✅ Data Completeness", f"{completion_rate:.1f}%")
 
     if selected_req_cols:
         # Create editable dataframe for the current request
-        # Ensure REQUEST_ID is first and no duplicates
-        columns_to_show = ["REQUEST_ID"] + [col for col in selected_req_cols if col != "REQUEST_ID"]
-        edit_df = req_df[columns_to_show].copy()
+        edit_df = req_df[["REQUEST_ID"] + selected_req_cols].copy()
         
         # Clean the DataFrame to avoid PyArrow issues
         for col in edit_df.columns:
@@ -540,9 +408,7 @@ def show_request_form_editor():
             st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
             
             # Create editable table for bulk editing
-            # Ensure REQUEST_ID is first and no duplicates
-            columns_to_show = ["REQUEST_ID"] + [col for col in selected_req_cols if col != "REQUEST_ID"]
-            bulk_edit_df = flagged_df[columns_to_show].copy()
+            bulk_edit_df = flagged_df[["REQUEST_ID"] + selected_req_cols].copy()
             
             # Clean the DataFrame to avoid PyArrow issues
             for col in bulk_edit_df.columns:
