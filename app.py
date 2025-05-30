@@ -79,16 +79,30 @@ def show_dashboard():
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    if "DATE_REQUEST_RECEIVED_X" in df.columns:
-        df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
-        timeline = df.groupby(df["DATE_REQUEST_RECEIVED_X"].dt.to_period("M")).size()
-        fig = px.line(
-            x=timeline.index.astype(str),
-            y=timeline.values,
-            labels={"x": "Month", "y": "Request Count"},
-            title="Monthly Request Trends"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+if "DATE_REQUEST_RECEIVED_X" in df.columns:
+    df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
+    df['WEEK'] = df["DATE_REQUEST_RECEIVED_X"].dt.to_period("W").astype(str)
+
+    # Total Requests Per Week
+    st.markdown("#### 📈 Total Requests Per Week")
+    total_per_week = df.groupby('WEEK').size().reset_index(name='Total Requests')
+    fig1 = px.line(total_per_week, x='WEEK', y='Total Requests', title='Total Requests Per Week')
+    st.plotly_chart(fig1, use_container_width=True)
+
+    # Requests by Status Per Week
+    st.markdown("#### 🗂️ Requests by Status Per Week")
+    if 'REQUEST_STATUS' in df.columns:
+        status_week = df.groupby(['WEEK', 'REQUEST_STATUS']).size().reset_index(name='Count')
+        fig2 = px.line(status_week, x='WEEK', y='Count', color='REQUEST_STATUS', title='Requests by Status Per Week')
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # Avg. Cycle Time for Completed Requests
+    st.markdown("#### ⏳ Avg. Cycle Time for Completed Requests Per Week")
+    df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+    completed = df[df['REQUEST_STATUS'] == 'Approved'].dropna(subset=['TIME_TO_APPROVAL'])
+    avg_cycle = completed.groupby('WEEK')['TIME_TO_APPROVAL'].mean().reset_index()
+    fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
+    st.plotly_chart(fig3, use_container_width=True)
 
 # Request Form Editor with DQ flag icons and status filter
 def show_request_form_editor():
