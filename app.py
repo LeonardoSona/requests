@@ -10,42 +10,34 @@ if "requests" not in st.session_state:
     st.session_state.requests = pd.DataFrame()
 
 # Utility: Enhanced metrics
-# Utility: Enhanced metrics
 def compute_enhanced_metrics(df):
     metrics = {}
-    
-    # Make a copy to avoid modifying the original DataFrame
-    df = df.copy()
 
-    # Convert date columns to datetime if they exist
+    # Ensure required date columns are parsed
     if 'DATE_REQUEST_RECEIVED_X' in df.columns:
         df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df['DATE_REQUEST_RECEIVED_X'], errors='coerce')
     if 'DATE_ACCESS_GRANTED_X' in df.columns:
         df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df['DATE_ACCESS_GRANTED_X'], errors='coerce')
 
-    # Calculate TIME_TO_APPROVAL only if both date columns exist and have valid data
-    if ('DATE_REQUEST_RECEIVED_X' in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns and
-        not df['DATE_REQUEST_RECEIVED_X'].isna().all() and not df['DATE_ACCESS_GRANTED_X'].isna().all()):
-        
+    # Calculate TIME_TO_APPROVAL only if both dates are present
+    if 'DATE_REQUEST_RECEIVED_X' in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
         df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
-        
-        # Only calculate metrics if TIME_TO_APPROVAL column was successfully created and has valid data
-        if 'TIME_TO_APPROVAL' in df.columns and not df['TIME_TO_APPROVAL'].isna().all():
-            metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
-            metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
-        else:
-            metrics['avg_time_to_approval'] = None
-            metrics['median_time_to_approval'] = None
+        metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
+        metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
     else:
         metrics['avg_time_to_approval'] = None
         metrics['median_time_to_approval'] = None
 
-    # Calculate days since request and overdue status
+    # Dataset status counts
+    if 'DATASET_STATUS' in df.columns:
+        metrics['dataset_status_counts'] = df['DATASET_STATUS'].value_counts().to_dict()
+    else:
+        metrics['dataset_status_counts'] = {}
+
+    # Calculate overdue requests (requests pending for more than 90 days)
+    today = pd.Timestamp.now()
     if 'DATE_REQUEST_RECEIVED_X' in df.columns:
-        today = pd.Timestamp.now()
         df['DAYS_SINCE_REQUEST'] = (today - df['DATE_REQUEST_RECEIVED_X']).dt.days
-        
-        # Only calculate overdue if REQUEST_STATUS column exists
         if 'REQUEST_STATUS' in df.columns:
             df['OVERDUE'] = (df['REQUEST_STATUS'] != 'Approved') & (df['DAYS_SINCE_REQUEST'] > 90)
             metrics['overdue_count'] = df['OVERDUE'].sum()
@@ -53,14 +45,9 @@ def compute_enhanced_metrics(df):
             metrics['overdue_count'] = 0
     else:
         metrics['overdue_count'] = 0
-    
-    # Add dataset status counts if available
-    if 'DATASET_STATUS' in df.columns:
-        metrics['dataset_status_counts'] = df['DATASET_STATUS'].value_counts().to_dict()
-    else:
-        metrics['dataset_status_counts'] = {}
 
     return metrics, df
+
 
 # Import Excel
 def show_import_export():
