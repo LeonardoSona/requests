@@ -244,25 +244,128 @@ def show_request_form_editor():
     st.markdown("### ✏️ Request Details - Editable Table")
     req_columns = req_df.columns.tolist()
     
-    milestone_columns = [
-        "NAME",
-        "REQUEST_STATUS",
-        "DATE_REQUEST_RECEIVED_X",
-        "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
-        "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
-        "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
-        "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
-        "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
-        "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
-        "V1_PROPOSAL_COMPLETE_DATE",
-        "DATE_ACCESS_GRANTED_X"
-    ]
-
-    selected_req_cols = st.multiselect(
-        "Choose columns to display/edit for the request",
-        req_columns,
-        default=[col for col in milestone_columns if col in req_columns]
-    )
+    # Group columns by category for better UX
+    basic_info = ["REQUEST_ID", "NAME", "REQUEST_STATUS"]
+    timeline_dates = [col for col in req_columns if "DATE" in col.upper()]
+    dataset_fields = [col for col in req_columns if "DATASET" in col.upper()]
+    other_fields = [col for col in req_columns if col not in basic_info + timeline_dates + dataset_fields]
+    
+    # Smart column selection with organized tabs
+    st.markdown("#### 📋 Choose Fields to Display/Edit")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Basic Info", "📅 Timeline", "📊 Datasets", "📄 Other Fields"])
+    
+    selected_basic = []
+    selected_timeline = []
+    selected_datasets = []
+    selected_other = []
+    
+    with tab1:
+        st.markdown("**Core request information**")
+        available_basic = [col for col in basic_info if col in req_columns]
+        selected_basic = st.multiselect(
+            "Basic Information Fields",
+            available_basic,
+            default=available_basic,
+            key="basic_fields"
+        )
+    
+    with tab2:
+        st.markdown("**Request timeline and milestone dates**")
+        # Pre-organize timeline dates in logical order
+        timeline_order = [
+            "DATE_REQUEST_RECEIVED_X",
+            "DATE_SHARED_WITH_SCIENTIFIC_SPADM", 
+            "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
+            "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
+            "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
+            "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
+            "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
+            "V1_PROPOSAL_COMPLETE_DATE",
+            "DATE_ACCESS_GRANTED_X"
+        ]
+        ordered_timeline = [col for col in timeline_order if col in timeline_dates]
+        other_timeline = [col for col in timeline_dates if col not in timeline_order]
+        available_timeline = ordered_timeline + other_timeline
+        
+        selected_timeline = st.multiselect(
+            "Timeline & Milestone Dates",
+            available_timeline,
+            default=ordered_timeline[:6] if len(ordered_timeline) >= 6 else ordered_timeline,
+            key="timeline_fields",
+            help="Dates are shown in logical workflow order"
+        )
+    
+    with tab3:
+        st.markdown("**Dataset-related information**")
+        if dataset_fields:
+            selected_datasets = st.multiselect(
+                "Dataset Fields",
+                dataset_fields,
+                default=dataset_fields[:3] if len(dataset_fields) >= 3 else dataset_fields,
+                key="dataset_fields"
+            )
+        else:
+            st.info("No dataset fields found in this data")
+    
+    with tab4:
+        st.markdown("**Additional fields and metadata**")
+        if other_fields:
+            selected_other = st.multiselect(
+                "Other Fields",
+                other_fields,
+                default=[],
+                key="other_fields"
+            )
+        else:
+            st.info("No additional fields available")
+    
+    # Combine all selected columns
+    selected_req_cols = selected_basic + selected_timeline + selected_datasets + selected_other
+    
+    # Quick selection shortcuts
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("📋 Essential Only", help="Select just the core fields"):
+            st.session_state.basic_fields = [col for col in ["REQUEST_ID", "NAME", "REQUEST_STATUS"] if col in req_columns]
+            st.session_state.timeline_fields = [col for col in ["DATE_REQUEST_RECEIVED_X", "DATE_ACCESS_GRANTED_X"] if col in req_columns]
+            st.session_state.dataset_fields = []
+            st.session_state.other_fields = []
+            st.rerun()
+    
+    with col2:
+        if st.button("📅 Timeline Focus", help="Select timeline and status fields"):
+            st.session_state.basic_fields = [col for col in ["REQUEST_ID", "REQUEST_STATUS"] if col in req_columns]
+            st.session_state.timeline_fields = ordered_timeline
+            st.session_state.dataset_fields = []
+            st.session_state.other_fields = []
+            st.rerun()
+    
+    with col3:
+        if st.button("📊 Dataset Focus", help="Select dataset-related fields"):
+            st.session_state.basic_fields = [col for col in ["REQUEST_ID", "NAME"] if col in req_columns]
+            st.session_state.timeline_fields = []
+            st.session_state.dataset_fields = dataset_fields
+            st.session_state.other_fields = []
+            st.rerun()
+    
+    with col4:
+        if st.button("🎯 Select All", help="Select all available fields"):
+            st.session_state.basic_fields = available_basic
+            st.session_state.timeline_fields = available_timeline
+            st.session_state.dataset_fields = dataset_fields
+            st.session_state.other_fields = other_fields
+            st.rerun()
+    
+    # Show field count and data completeness
+    if selected_req_cols:
+        total_fields = len(selected_req_cols)
+        completed_fields = sum(1 for col in selected_req_cols if pd.notna(request_row.get(col)) and str(request_row.get(col)).strip() != "")
+        completion_rate = (completed_fields / total_fields) * 100 if total_fields > 0 else 0
+        
+        col1, col2 = st.columns(2)
+        col1.metric("📊 Selected Fields", total_fields)
+        col2.metric("✅ Data Completeness", f"{completion_rate:.1f}%")
 
     if selected_req_cols:
         # Create editable dataframe for the current request
