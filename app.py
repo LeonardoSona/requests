@@ -12,42 +12,24 @@ if "requests" not in st.session_state:
 # Utility: Enhanced metrics
 def compute_enhanced_metrics(df):
     metrics = {}
+    df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df.get('DATE_REQUEST_RECEIVED_X'), errors='coerce')
+    df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df.get('DATE_ACCESS_GRANTED_X'), errors='coerce')
+    df['CYCLE_TIME_DAYS'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
 
-    # Ensure required date columns are parsed
-    if 'DATE_REQUEST_RECEIVED_X' in df.columns:
-        df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df['DATE_REQUEST_RECEIVED_X'], errors='coerce')
-    if 'DATE_ACCESS_GRANTED_X' in df.columns:
-        df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df['DATE_ACCESS_GRANTED_X'], errors='coerce')
+    metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
+    metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
 
-    # Calculate TIME_TO_APPROVAL only if both dates are present
-    if 'DATE_REQUEST_RECEIVED_X' in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
-        df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
-        metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
-        metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
-    else:
-        metrics['avg_time_to_approval'] = None
-        metrics['median_time_to_approval'] = None
-
-    # Dataset status counts
     if 'DATASET_STATUS' in df.columns:
         metrics['dataset_status_counts'] = df['DATASET_STATUS'].value_counts().to_dict()
     else:
         metrics['dataset_status_counts'] = {}
 
-    # Calculate overdue requests (requests pending for more than 90 days)
     today = pd.Timestamp.now()
-    if 'DATE_REQUEST_RECEIVED_X' in df.columns:
-        df['DAYS_SINCE_REQUEST'] = (today - df['DATE_REQUEST_RECEIVED_X']).dt.days
-        if 'REQUEST_STATUS' in df.columns:
-            df['OVERDUE'] = (df['REQUEST_STATUS'] != 'Approved') & (df['DAYS_SINCE_REQUEST'] > 90)
-            metrics['overdue_count'] = df['OVERDUE'].sum()
-        else:
-            metrics['overdue_count'] = 0
-    else:
-        metrics['overdue_count'] = 0
+    df['DAYS_SINCE_REQUEST'] = (today - df['DATE_REQUEST_RECEIVED_X']).dt.days
+    df['OVERDUE'] = (df['REQUEST_STATUS'] != 'Approved') & (df['DAYS_SINCE_REQUEST'] > 90)
+    metrics['overdue_count'] = df['OVERDUE'].sum()
 
-    return metrics, df
-
+    return metrics
 
 # Import Excel
 def show_import_export():
@@ -70,7 +52,7 @@ def show_dashboard():
         st.info("No request data available.")
         return
 
-    metrics, df = compute_enhanced_metrics(df)
+    metrics = compute_enhanced_metrics(df)
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Requests", len(df["REQUEST_ID"].dropna().unique()))
@@ -222,27 +204,22 @@ def show_request_form_editor():
     request_row = req_df.iloc[0].copy()
 
     st.markdown("### ✏️ Request Details")
-    req_columns = [col.strip() for col in req_df.columns.tolist()]  # clean any stray spaces
-
+    req_columns = req_df.columns.tolist()
+    
     milestone_columns = [
-        "NAME",
-        "REQUEST_STATUS",
-        "DATE_REQUEST_RECEIVED_X",
-        "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
-        "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
-        "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
-        "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
-        "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
-        "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
-        "V1_PROPOSAL_COMPLETE_DATE",
-        "DATE_ACCESS_GRANTED_X"
+    "NAME",
+    "REQUEST_STATUS",
+    "DATE_REQUEST_RECEIVED_X",
+    "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
+    "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
+    "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
+    "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
+    "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
+    "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
+    "V1_PROPOSAL_COMPLETE_DATE",
+    "DATE_ACCESS_GRANTED_X"
     ]
-    
-    # Log any missing milestone columns
-    missing_defaults = [col for col in milestone_columns if col not in req_columns]
-    if missing_defaults:
-        st.warning(f"Missing milestone columns from this request: {missing_defaults}")
-    
+
     selected_req_cols = st.multiselect(
         "Choose columns to display/edit for the request",
         req_columns,
