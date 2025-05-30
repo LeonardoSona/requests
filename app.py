@@ -301,11 +301,105 @@ def show_request_form_editor():
         st.write("")
 
     if st.button("💾 Save Request"):
-        idxs = st.session_state.requests[st.session_state.requests["REQUEST_ID"] == selected_id].index
-        for idx in idxs:
+        try:
+            # Validate data before saving
+            errors = []
+            warnings = []
+            
+            # Date validation logic
             for col, val in req_data.items():
-                st.session_state.requests.at[idx, col] = val
-        st.success("✅ Request updated.")
+                if "DATE" in col.upper() and val is not None:
+                    # Convert to datetime for comparison
+                    current_date = pd.to_datetime(val)
+                    
+                    # Check if date is in the future
+                    if current_date > pd.Timestamp.now():
+                        warnings.append(f"⚠️ {col}: Date is in the future")
+                    
+                    # Validate logical date sequences
+                    request_received = req_data.get("DATE_REQUEST_RECEIVED_X")
+                    if request_received and col != "DATE_REQUEST_RECEIVED_X":
+                        if current_date < pd.to_datetime(request_received):
+                            errors.append(f"❌ {col}: Cannot be before request received date ({request_received})")
+                    
+                    # Specific business logic validations
+                    if col == "DATE_ACCESS_GRANTED_X":
+                        # Access granted should be after all other milestone dates
+                        milestone_dates = [
+                            "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
+                            "DATE_OF_SCIENTIFIC_REVIEW_DECISION", 
+                            "DATE_OF_DATA_USE_GOVERNANCE_DECISION"
+                        ]
+                        for milestone_col in milestone_dates:
+                            milestone_val = req_data.get(milestone_col)
+                            if milestone_val and current_date < pd.to_datetime(milestone_val):
+                                errors.append(f"❌ Access granted date cannot be before {milestone_col} ({milestone_val})")
+                    
+                    # Scientific review decision should be after sharing with scientific team
+                    if col == "DATE_OF_SCIENTIFIC_REVIEW_DECISION":
+                        shared_sci = req_data.get("DATE_SHARED_WITH_SCIENTIFIC_SPADM")
+                        if shared_sci and current_date < pd.to_datetime(shared_sci):
+                            errors.append(f"❌ Scientific review decision cannot be before sharing with scientific team ({shared_sci})")
+                    
+                    # Governance decision should be after sharing with governance team  
+                    if col == "DATE_OF_DATA_USE_GOVERNANCE_DECISION":
+                        shared_gov = req_data.get("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM")
+                        if shared_gov and current_date < pd.to_datetime(shared_gov):
+                            errors.append(f"❌ Governance decision cannot be before sharing with governance team ({shared_gov})")
+                    
+                    # Anonymization completion should be after start
+                    if col == "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE":
+                        anon_start = req_data.get("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE")
+                        if anon_start and current_date < pd.to_datetime(anon_start):
+                            errors.append(f"❌ Anonymization completion cannot be before start date ({anon_start})")
+            
+            # Status validation
+            status_val = req_data.get("REQUEST_STATUS")
+            if status_val == "Approved" and not req_data.get("DATE_ACCESS_GRANTED_X"):
+                errors.append("❌ Approved requests must have an access granted date")
+            
+            # Required field validation (you can customize this)
+            required_fields = ["REQUEST_STATUS", "DATE_REQUEST_RECEIVED_X"]
+            for field in required_fields:
+                if field in req_data and (req_data[field] is None or str(req_data[field]).strip() == ""):
+                    errors.append(f"❌ {field} is required")
+            
+            # Display errors and warnings
+            if errors:
+                st.error("**Cannot save due to the following errors:**")
+                for error in errors:
+                    st.error(error)
+            else:
+                # Show warnings but allow save
+                if warnings:
+                    st.warning("**Please review the following:**")
+                    for warning in warnings:
+                        st.warning(warning)
+                
+                # Proceed with save
+                idxs = st.session_state.requests[st.session_state.requests["REQUEST_ID"] == selected_id].index
+                if len(idxs) == 0:
+                    st.error("❌ Request ID not found in dataset")
+                else:
+                    for idx in idxs:
+                        for col, val in req_data.items():
+                            st.session_state.requests.at[idx, col] = val
+                    
+                    st.success("✅ Request updated successfully!")
+                    
+                    # Show what was changed
+                    changes = []
+                    for col, new_val in req_data.items():
+                        old_val = request_row.get(col)
+                        if str(old_val) != str(new_val):
+                            changes.append(f"**{col}**: `{old_val}` → `{new_val}`")
+                    
+                    if changes:
+                        st.info("**Changes made:**\n" + "\n".join(changes))
+                        
+        except Exception as e:
+            st.error(f"❌ Unexpected error occurred while saving: {str(e)}")
+            st.error("Please check your data and try again, or contact support if the problem persists.")
 
     st.markdown("### 📄 Associated Datasets")
     dataset_columns = [col for col in req_df.columns if "DATASET" in col.upper()]
