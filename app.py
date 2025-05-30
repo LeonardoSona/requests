@@ -14,7 +14,9 @@ def compute_enhanced_metrics(df):
     metrics = {}
     df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df.get('DATE_REQUEST_RECEIVED_X'), errors='coerce')
     df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df.get('DATE_ACCESS_GRANTED_X'), errors='coerce')
-    df['CYCLE_TIME_DAYS'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+    
+    # Moved here — compute cycle time before metrics
+    df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
 
     metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
     metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
