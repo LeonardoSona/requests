@@ -137,99 +137,100 @@ def show_dashboard():
             fig2 = px.line(status_week, x='WEEK', y='Count', color='REQUEST_STATUS', title='Requests by Status Per Week')
             st.plotly_chart(fig2, use_container_width=True)
 
-    # Row 2: Avg Cycle Time, Weekly Breakdown (2 columns, centered)
-    col1, col2, col3 = st.columns([1, 2, 1])
+    # Row 2: Avg Cycle Time and Weekly Breakdown (side by side)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if "DATE_REQUEST_RECEIVED_X" in df.columns and 'TIME_TO_APPROVAL' in df.columns and 'REQUEST_STATUS' in df.columns:
+            st.markdown("#### ⏳ Avg. Cycle Time for Completed Requests Per Week")
+            completed = df[df['REQUEST_STATUS'] == 'Approved'].dropna(subset=['TIME_TO_APPROVAL'])
+            if not completed.empty:
+                avg_cycle = completed.groupby('WEEK')['TIME_TO_APPROVAL'].mean().reset_index()
+                fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
+                st.plotly_chart(fig3, use_container_width=True)
+    
+    with col2:
+        if "DATE_REQUEST_RECEIVED_X" in df.columns and "REQUEST_STATUS" in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
+            st.markdown("#### 📊 Weekly Breakdown: Submitted vs. Completed vs. In Progress")
+            submitted = df.groupby('WEEK').size().rename("Submitted")
+            completed = df.dropna(subset=['DATE_ACCESS_GRANTED_X']).groupby('WEEK').size().rename("Completed")
+            in_progress = df[df['DATE_ACCESS_GRANTED_X'].isna()].groupby('WEEK').size().rename("In Progress")
+            
+            weekly_summary = pd.concat([submitted, completed, in_progress], axis=1).fillna(0).reset_index()
+            melted_summary = weekly_summary.melt(id_vars='WEEK', var_name='Metric', value_name='Count')
+            
+            fig4 = px.line(melted_summary, x='WEEK', y='Count', color='Metric', title='Submitted vs Completed vs In Progress Per Week')
+            st.plotly_chart(fig4, use_container_width=True)
+
+    # Row 3: Phase-Level Cycle Times and Cycle Durations by Stage (side by side)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if "DATE_REQUEST_RECEIVED_X" in df.columns:
+            st.markdown("#### ⏱️ Phase-Level Cycle Times Per Week")
+            phase_calculations = [
+                ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
+                ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Decision"),
+                ("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM", "DATE_OF_DATA_USE_GOVERNANCE_DECISION", "Governance Review"),
+                ("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE", "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE", "Anonymization"),
+                ("DATE_OF_DATA_USE_GOVERNANCE_DECISION", "V1_PROPOSAL_COMPLETE_DATE", "Proposal")
+            ]
+            
+            # Combine all phase data into one chart
+            all_phase_data = []
+            for start_col, end_col, label in phase_calculations:
+                if start_col in df.columns and end_col in df.columns:
+                    df[start_col] = pd.to_datetime(df[start_col], errors='coerce')
+                    df[end_col] = pd.to_datetime(df[end_col], errors='coerce')
+                    df[f'{label}_DAYS'] = (df[end_col] - df[start_col]).dt.days
+                    step_avg = df.dropna(subset=[f'{label}_DAYS']).groupby('WEEK')[f'{label}_DAYS'].mean().reset_index()
+                    if not step_avg.empty:
+                        step_avg['Phase'] = label
+                        step_avg = step_avg.rename(columns={f'{label}_DAYS': 'Days'})
+                        all_phase_data.append(step_avg)
+            
+            if all_phase_data:
+                combined_phase_df = pd.concat(all_phase_data, ignore_index=True)
+                fig_phases = px.line(combined_phase_df, x='WEEK', y='Days', color='Phase', 
+                                   title='Phase-Level Cycle Times Per Week')
+                st.plotly_chart(fig_phases, use_container_width=True)
     
     with col2:
         if "DATE_REQUEST_RECEIVED_X" in df.columns:
-            # Avg. Cycle Time for Completed Requests
-            st.markdown("#### ⏳ Avg. Cycle Time for Completed Requests Per Week")
-            if 'TIME_TO_APPROVAL' in df.columns and 'REQUEST_STATUS' in df.columns:
-                completed = df[df['REQUEST_STATUS'] == 'Approved'].dropna(subset=['TIME_TO_APPROVAL'])
-                if not completed.empty:
-                    avg_cycle = completed.groupby('WEEK')['TIME_TO_APPROVAL'].mean().reset_index()
-                    fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
-                    st.plotly_chart(fig3, use_container_width=True)
-
-            # Weekly Breakdown: Submitted vs. Completed vs. In Progress
-            st.markdown("#### 📊 Weekly Breakdown: Submitted vs. Completed vs. In Progress")
-            if "REQUEST_STATUS" in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
-                submitted = df.groupby('WEEK').size().rename("Submitted")
-                completed = df.dropna(subset=['DATE_ACCESS_GRANTED_X']).groupby('WEEK').size().rename("Completed")
-                in_progress = df[df['DATE_ACCESS_GRANTED_X'].isna()].groupby('WEEK').size().rename("In Progress")
-                
-                weekly_summary = pd.concat([submitted, completed, in_progress], axis=1).fillna(0).reset_index()
-                melted_summary = weekly_summary.melt(id_vars='WEEK', var_name='Metric', value_name='Count')
-                
-                fig4 = px.line(melted_summary, x='WEEK', y='Count', color='Metric', title='Submitted vs Completed vs In Progress Per Week')
-                st.plotly_chart(fig4, use_container_width=True)
-
-    # Row 3: Phase-Level Cycle Times (all in one chart)
-    if "DATE_REQUEST_RECEIVED_X" in df.columns:
-        st.markdown("#### ⏱️ Phase-Level Cycle Times Per Week")
-        phase_calculations = [
-            ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
-            ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Decision"),
-            ("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM", "DATE_OF_DATA_USE_GOVERNANCE_DECISION", "Governance Review"),
-            ("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE", "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE", "Anonymization"),
-            ("DATE_OF_DATA_USE_GOVERNANCE_DECISION", "V1_PROPOSAL_COMPLETE_DATE", "Proposal")
-        ]
-        
-        # Combine all phase data into one chart
-        all_phase_data = []
-        for start_col, end_col, label in phase_calculations:
-            if start_col in df.columns and end_col in df.columns:
-                df[start_col] = pd.to_datetime(df[start_col], errors='coerce')
-                df[end_col] = pd.to_datetime(df[end_col], errors='coerce')
-                df[f'{label}_DAYS'] = (df[end_col] - df[start_col]).dt.days
-                step_avg = df.dropna(subset=[f'{label}_DAYS']).groupby('WEEK')[f'{label}_DAYS'].mean().reset_index()
-                if not step_avg.empty:
-                    step_avg['Phase'] = label
-                    step_avg = step_avg.rename(columns={f'{label}_DAYS': 'Days'})
-                    all_phase_data.append(step_avg)
-        
-        if all_phase_data:
-            combined_phase_df = pd.concat(all_phase_data, ignore_index=True)
-            fig_phases = px.line(combined_phase_df, x='WEEK', y='Days', color='Phase', 
-                               title='Phase-Level Cycle Times Per Week')
-            st.plotly_chart(fig_phases, use_container_width=True)
-
-    # Row 4: Cycle Durations by Stage (all in one chart)
-    if "DATE_REQUEST_RECEIVED_X" in df.columns:
-        st.markdown("#### 🧪 Cycle Durations by Stage")
-        
-        # Define milestones as tuples: (start_col, end_col, label)
-        milestone_stages = [
-            ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
-            ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Decision"),
-            ("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM", "DATE_OF_DATA_USE_GOVERNANCE_DECISION", "Governance Review"),
-            ("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE", "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE", "Anonymization"),
-            ("DATE_OF_DATA_USE_GOVERNANCE_DECISION", "V1_PROPOSAL_COMPLETE_DATE", "Proposal"),
-            ("DATE_REQUEST_RECEIVED_X", "DATE_ACCESS_GRANTED_X", "Total Cycle"),
-        ]
-        
-        # Parse all date columns at once to avoid duplication
-        all_date_cols = set([col for pair in milestone_stages for col in pair[:2]])
-        for col in all_date_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors="coerce")
-        
-        # Combine all stage data into one chart
-        all_stage_data = []
-        for start_col, end_col, label in milestone_stages:
-            if start_col in df.columns and end_col in df.columns:
-                df[f"{label}_DAYS"] = (df[end_col] - df[start_col]).dt.days
-                stage_avg = df.dropna(subset=[f"{label}_DAYS"]).groupby('WEEK')[f"{label}_DAYS"].mean().reset_index()
-                if not stage_avg.empty:
-                    stage_avg['Stage'] = label
-                    stage_avg = stage_avg.rename(columns={f"{label}_DAYS": 'Days'})
-                    all_stage_data.append(stage_avg)
-        
-        if all_stage_data:
-            combined_stage_df = pd.concat(all_stage_data, ignore_index=True)
-            fig_stages = px.line(combined_stage_df, x='WEEK', y='Days', color='Stage', 
-                               title='Cycle Durations by Stage Per Week')
-            st.plotly_chart(fig_stages, use_container_width=True)
+            st.markdown("#### 🧪 Cycle Durations by Stage")
+            
+            # Define milestones as tuples: (start_col, end_col, label)
+            milestone_stages = [
+                ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
+                ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Decision"),
+                ("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM", "DATE_OF_DATA_USE_GOVERNANCE_DECISION", "Governance Review"),
+                ("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE", "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE", "Anonymization"),
+                ("DATE_OF_DATA_USE_GOVERNANCE_DECISION", "V1_PROPOSAL_COMPLETE_DATE", "Proposal"),
+                ("DATE_REQUEST_RECEIVED_X", "DATE_ACCESS_GRANTED_X", "Total Cycle"),
+            ]
+            
+            # Parse all date columns at once to avoid duplication
+            all_date_cols = set([col for pair in milestone_stages for col in pair[:2]])
+            for col in all_date_cols:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors="coerce")
+            
+            # Combine all stage data into one chart
+            all_stage_data = []
+            for start_col, end_col, label in milestone_stages:
+                if start_col in df.columns and end_col in df.columns:
+                    df[f"{label}_DAYS"] = (df[end_col] - df[start_col]).dt.days
+                    stage_avg = df.dropna(subset=[f"{label}_DAYS"]).groupby('WEEK')[f"{label}_DAYS"].mean().reset_index()
+                    if not stage_avg.empty:
+                        stage_avg['Stage'] = label
+                        stage_avg = stage_avg.rename(columns={f"{label}_DAYS": 'Days'})
+                        all_stage_data.append(stage_avg)
+            
+            if all_stage_data:
+                combined_stage_df = pd.concat(all_stage_data, ignore_index=True)
+                fig_stages = px.line(combined_stage_df, x='WEEK', y='Days', color='Stage', 
+                                   title='Cycle Durations by Stage Per Week')
+                st.plotly_chart(fig_stages, use_container_width=True)
 
 
 # Request Form Editor with DQ flag icons and status filter
