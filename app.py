@@ -270,7 +270,10 @@ def show_request_form_editor():
         flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
         if not flagged_df.empty:
             st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
-            st.dataframe(flagged_df[["REQUEST_ID"] + selected_req_cols], use_container_width=True)
+            # Convert to string to avoid PyArrow type errors
+            display_df = flagged_df[["REQUEST_ID"] + selected_req_cols].copy()
+            display_df = display_df.astype(str)
+            st.dataframe(display_df, use_container_width=True)
         else:
             st.success("✅ No missing fields in selected columns.")
 
@@ -310,6 +313,8 @@ def show_request_form_editor():
                                           default=available_defaults)
         if selected_ds_cols:
             dataset_df = req_df[selected_ds_cols].copy()
+            # Convert to string to avoid PyArrow type errors
+            dataset_df = dataset_df.astype(str)
             st.dataframe(dataset_df, use_container_width=True)
 
 # App Tabs
