@@ -283,19 +283,22 @@ def show_request_form_editor():
     req_data = {}
     for col in selected_req_cols:
         is_missing = col in missing_fields
-        label_col, input_col = st.columns([3, 7])
-        with label_col:
-            st.markdown(f"**{col}** {'⚠️' if is_missing else ''}")
-        with input_col:
-            value = request_row.get(col, "")
-            if "DATE" in col.upper():
-                parsed_date = pd.to_datetime(value, errors="coerce")
-                if pd.notna(parsed_date):
-                    req_data[col] = st.date_input("", value=parsed_date.date(), key=f"date_{col}")
-                else:
-                    req_data[col] = st.date_input("", value=None, key=f"date_{col}")
+        
+        # Put label above the input field with better styling
+        st.markdown(f"**{col}** {'⚠️ *Missing*' if is_missing else ''}")
+        
+        value = request_row.get(col, "")
+        if "DATE" in col.upper():
+            parsed_date = pd.to_datetime(value, errors="coerce")
+            if pd.notna(parsed_date):
+                req_data[col] = st.date_input("", value=parsed_date.date(), key=f"date_{col}", label_visibility="collapsed")
             else:
-                req_data[col] = st.text_input("", value, key=f"text_{col}")
+                req_data[col] = st.date_input("", value=None, key=f"date_{col}", label_visibility="collapsed")
+        else:
+            req_data[col] = st.text_input("", value=str(value) if pd.notna(value) else "", key=f"text_{col}", label_visibility="collapsed")
+        
+        # Add some spacing between fields
+        st.write("")
 
     if st.button("💾 Save Request"):
         idxs = st.session_state.requests[st.session_state.requests["REQUEST_ID"] == selected_id].index
