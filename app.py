@@ -104,6 +104,35 @@ def show_dashboard():
         fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
         st.plotly_chart(fig3, use_container_width=True)
 
+        # Weekly Breakdown: Submitted vs. Completed vs. In Progress
+        st.markdown("#### 📊 Weekly Breakdown: Submitted vs. Completed vs. In Progress")
+        if "REQUEST_STATUS" in df.columns:
+            submitted = df.groupby('WEEK').size().rename("Submitted")
+            completed = df[df["REQUEST_STATUS"] == "Approved"].groupby('WEEK').size().rename("Completed")
+            in_progress = df[df["REQUEST_STATUS"] != "Approved"].groupby('WEEK').size().rename("In Progress")
+            
+            weekly_summary = pd.concat([submitted, completed, in_progress], axis=1).fillna(0).reset_index()
+            melted_summary = weekly_summary.melt(id_vars='WEEK', var_name='Metric', value_name='Count')
+            
+            fig4 = px.line(melted_summary, x='WEEK', y='Count', color='Metric', title='Submitted vs Completed vs In Progress Per Week')
+            st.plotly_chart(fig4, use_container_width=True)
+
+        # 3. Per-Step Cycle Times (if available)
+        step_columns = [
+            ("DATE_INITIAL_REVIEW", "Initial Review"),
+            ("DATE_SCIENTIFIC_REVIEW", "Scientific Review"),
+            ("DATE_DUG_REVIEW", "DUG Review"),
+            ("DATE_CURATION_COMPLETE", "Curation Complete")
+        ]
+        
+        for step_col, label in step_columns:
+            if step_col in df.columns:
+                df[step_col] = pd.to_datetime(df[step_col], errors='coerce')
+                df[f'{label}_DAYS'] = (df[step_col] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+                step_avg = df.groupby('WEEK')[f'{label}_DAYS'].mean().reset_index()
+                fig_step = px.line(step_avg, x='WEEK', y=f'{label}_DAYS', title=f'Average Time to {label} Per Week')
+                st.plotly_chart(fig_step, use_container_width=True)
+
 # Request Form Editor with DQ flag icons and status filter
 def show_request_form_editor():
     st.subheader("📝 Request Form Editor")
