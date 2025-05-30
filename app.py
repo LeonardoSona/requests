@@ -241,7 +241,7 @@ def show_request_form_editor():
     req_df = df[df["REQUEST_ID"] == selected_id].copy()
     request_row = req_df.iloc[0].copy()
 
-    st.markdown("### ✏️ Request Details")
+    st.markdown("### ✏️ Request Details - Editable Table")
     req_columns = req_df.columns.tolist()
     
     milestone_columns = [
@@ -264,142 +264,163 @@ def show_request_form_editor():
         default=[col for col in milestone_columns if col in req_columns]
     )
 
-    # 🔍 Requests with Missing Fields
-    st.markdown("### 🔍 Requests with Missing Fields")
-    if selected_req_cols:  # Only check if there are selected columns
+    if selected_req_cols:
+        # Create editable dataframe for the current request
+        edit_df = req_df[["REQUEST_ID"] + selected_req_cols].copy()
+        
+        # Configure column types for better editing experience
+        column_config = {}
+        for col in selected_req_cols:
+            if "DATE" in col.upper():
+                column_config[col] = st.column_config.DateColumn(
+                    col,
+                    help=f"Enter date for {col}",
+                    format="YYYY-MM-DD"
+                )
+            elif col == "REQUEST_STATUS":
+                # Get unique status values from the full dataset for dropdown
+                status_options = sorted(df["REQUEST_STATUS"].dropna().unique().tolist()) if "REQUEST_STATUS" in df.columns else []
+                column_config[col] = st.column_config.SelectboxColumn(
+                    col,
+                    help="Select request status",
+                    options=status_options
+                )
+            else:
+                column_config[col] = st.column_config.TextColumn(
+                    col,
+                    help=f"Enter value for {col}"
+                )
+        
+        # Display editable table
+        edited_df = st.data_editor(
+            edit_df,
+            column_config=column_config,
+            use_container_width=True,
+            hide_index=True,
+            key=f"editor_{selected_id}",
+            num_rows="fixed"
+        )
+        
+        # Save button with validation
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("💾 Save Changes", key="save_table_changes"):
+                try:
+                    # Get the edited row (first row since we're editing one request at a time)
+                    edited_row = edited_df.iloc[0]
+                    
+                    # Validation logic
+                    errors = []
+                    warnings = []
+                    
+                    # Date validation
+                    for col in selected_req_cols:
+                        if "DATE" in col.upper() and pd.notna(edited_row[col]):
+                            current_date = pd.to_datetime(edited_row[col])
+                            
+                            # Check if date is in the future
+                            if current_date > pd.Timestamp.now():
+                                warnings.append(f"⚠️ {col}: Date is in the future")
+                            
+                            # Validate date sequences
+                            request_received = edited_row.get("DATE_REQUEST_RECEIVED_X")
+                            if pd.notna(request_received) and col != "DATE_REQUEST_RECEIVED_X":
+                                if current_date < pd.to_datetime(request_received):
+                                    errors.append(f"❌ {col}: Cannot be before request received date")
+                            
+                            # Business logic validations
+                            if col == "DATE_OF_SCIENTIFIC_REVIEW_DECISION":
+                                shared_sci = edited_row.get("DATE_SHARED_WITH_SCIENTIFIC_SPADM")
+                                if pd.notna(shared_sci) and current_date < pd.to_datetime(shared_sci):
+                                    errors.append(f"❌ Scientific review decision cannot be before sharing with scientific team")
+                            
+                            if col == "DATE_OF_DATA_USE_GOVERNANCE_DECISION":
+                                shared_gov = edited_row.get("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM")
+                                if pd.notna(shared_gov) and current_date < pd.to_datetime(shared_gov):
+                                    errors.append(f"❌ Governance decision cannot be before sharing with governance team")
+                    
+                    # Status validation
+                    if edited_row.get("REQUEST_STATUS") == "Approved" and pd.isna(edited_row.get("DATE_ACCESS_GRANTED_X")):
+                        errors.append("❌ Approved requests must have an access granted date")
+                    
+                    # Display errors and warnings
+                    if errors:
+                        st.error("**Cannot save due to validation errors:**")
+                        for error in errors:
+                            st.error(error)
+                    else:
+                        if warnings:
+                            for warning in warnings:
+                                st.warning(warning)
+                        
+                        # Save changes to session state
+                        original_request_idx = st.session_state.requests[st.session_state.requests["REQUEST_ID"] == selected_id].index[0]
+                        
+                        changes = []
+                        for col in selected_req_cols:
+                            old_val = st.session_state.requests.at[original_request_idx, col]
+                            new_val = edited_row[col]
+                            
+                            if str(old_val) != str(new_val):
+                                st.session_state.requests.at[original_request_idx, col] = new_val
+                                changes.append(f"**{col}**: `{old_val}` → `{new_val}`")
+                        
+                        if changes:
+                            st.success("✅ Changes saved successfully!")
+                            st.info("**Changes made:**\n" + "\n".join(changes))
+                        else:
+                            st.info("ℹ️ No changes detected")
+                            
+                except Exception as e:
+                    st.error(f"❌ Error saving changes: {str(e)}")
+        
+        with col2:
+            st.caption("💡 Tip: Click on cells to edit directly. Use Tab to move between fields.")
+
+    # 🔍 Requests with Missing Fields - Enhanced editable table
+    st.markdown("### 🔍 Requests with Missing Fields - Bulk Edit")
+    if selected_req_cols:
         flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
         if not flagged_df.empty:
             st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
-            # Convert to string to avoid PyArrow type errors
-            display_df = flagged_df[["REQUEST_ID"] + selected_req_cols].copy()
-            display_df = display_df.astype(str)
-            st.dataframe(display_df, use_container_width=True)
+            
+            # Create editable table for bulk editing
+            bulk_edit_df = flagged_df[["REQUEST_ID"] + selected_req_cols].copy()
+            
+            # Use the same column config as above
+            bulk_edited_df = st.data_editor(
+                bulk_edit_df,
+                column_config=column_config,
+                use_container_width=True,
+                hide_index=True,
+                key="bulk_editor",
+                num_rows="fixed"
+            )
+            
+            # Bulk save button
+            if st.button("💾 Save All Missing Field Updates", key="save_bulk_changes"):
+                try:
+                    changes_made = 0
+                    for idx, edited_row in bulk_edited_df.iterrows():
+                        original_idx = st.session_state.requests[st.session_state.requests["REQUEST_ID"] == edited_row["REQUEST_ID"]].index[0]
+                        
+                        for col in selected_req_cols:
+                            old_val = st.session_state.requests.at[original_idx, col]
+                            new_val = edited_row[col]
+                            
+                            if str(old_val) != str(new_val) and pd.notna(new_val):
+                                st.session_state.requests.at[original_idx, col] = new_val
+                                changes_made += 1
+                    
+                    if changes_made > 0:
+                        st.success(f"✅ Saved {changes_made} changes across {len(bulk_edited_df)} requests!")
+                    else:
+                        st.info("ℹ️ No changes detected")
+                        
+                except Exception as e:
+                    st.error(f"❌ Error saving bulk changes: {str(e)}")
         else:
             st.success("✅ No missing fields in selected columns.")
-
-    # Determine missing values in selected fields
-    missing_fields = [col for col in selected_req_cols if pd.isna(request_row.get(col)) or str(request_row.get(col)).strip() == ""]
-
-    req_data = {}
-    for col in selected_req_cols:
-        is_missing = col in missing_fields
-        
-        # Put label above the input field with better styling
-        st.markdown(f"**{col}** {'⚠️ *Missing*' if is_missing else ''}")
-        
-        value = request_row.get(col, "")
-        if "DATE" in col.upper():
-            parsed_date = pd.to_datetime(value, errors="coerce")
-            if pd.notna(parsed_date):
-                req_data[col] = st.date_input("", value=parsed_date.date(), key=f"date_{col}", label_visibility="collapsed")
-            else:
-                req_data[col] = st.date_input("", value=None, key=f"date_{col}", label_visibility="collapsed")
-        else:
-            req_data[col] = st.text_input("", value=str(value) if pd.notna(value) else "", key=f"text_{col}", label_visibility="collapsed")
-        
-        # Add some spacing between fields
-        st.write("")
-
-    if st.button("💾 Save Request"):
-        try:
-            # Validate data before saving
-            errors = []
-            warnings = []
-            
-            # Date validation logic
-            for col, val in req_data.items():
-                if "DATE" in col.upper() and val is not None:
-                    # Convert to datetime for comparison
-                    current_date = pd.to_datetime(val)
-                    
-                    # Check if date is in the future
-                    if current_date > pd.Timestamp.now():
-                        warnings.append(f"⚠️ {col}: Date is in the future")
-                    
-                    # Validate logical date sequences
-                    request_received = req_data.get("DATE_REQUEST_RECEIVED_X")
-                    if request_received and col != "DATE_REQUEST_RECEIVED_X":
-                        if current_date < pd.to_datetime(request_received):
-                            errors.append(f"❌ {col}: Cannot be before request received date ({request_received})")
-                    
-                    # Specific business logic validations
-                    if col == "DATE_ACCESS_GRANTED_X":
-                        # Access granted should be after all other milestone dates
-                        milestone_dates = [
-                            "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
-                            "DATE_OF_SCIENTIFIC_REVIEW_DECISION", 
-                            "DATE_OF_DATA_USE_GOVERNANCE_DECISION"
-                        ]
-                        for milestone_col in milestone_dates:
-                            milestone_val = req_data.get(milestone_col)
-                            if milestone_val and current_date < pd.to_datetime(milestone_val):
-                                errors.append(f"❌ Access granted date cannot be before {milestone_col} ({milestone_val})")
-                    
-                    # Scientific review decision should be after sharing with scientific team
-                    if col == "DATE_OF_SCIENTIFIC_REVIEW_DECISION":
-                        shared_sci = req_data.get("DATE_SHARED_WITH_SCIENTIFIC_SPADM")
-                        if shared_sci and current_date < pd.to_datetime(shared_sci):
-                            errors.append(f"❌ Scientific review decision cannot be before sharing with scientific team ({shared_sci})")
-                    
-                    # Governance decision should be after sharing with governance team  
-                    if col == "DATE_OF_DATA_USE_GOVERNANCE_DECISION":
-                        shared_gov = req_data.get("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM")
-                        if shared_gov and current_date < pd.to_datetime(shared_gov):
-                            errors.append(f"❌ Governance decision cannot be before sharing with governance team ({shared_gov})")
-                    
-                    # Anonymization completion should be after start
-                    if col == "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE":
-                        anon_start = req_data.get("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE")
-                        if anon_start and current_date < pd.to_datetime(anon_start):
-                            errors.append(f"❌ Anonymization completion cannot be before start date ({anon_start})")
-            
-            # Status validation
-            status_val = req_data.get("REQUEST_STATUS")
-            if status_val == "Approved" and not req_data.get("DATE_ACCESS_GRANTED_X"):
-                errors.append("❌ Approved requests must have an access granted date")
-            
-            # Required field validation (you can customize this)
-            required_fields = ["REQUEST_STATUS", "DATE_REQUEST_RECEIVED_X"]
-            for field in required_fields:
-                if field in req_data and (req_data[field] is None or str(req_data[field]).strip() == ""):
-                    errors.append(f"❌ {field} is required")
-            
-            # Display errors and warnings
-            if errors:
-                st.error("**Cannot save due to the following errors:**")
-                for error in errors:
-                    st.error(error)
-            else:
-                # Show warnings but allow save
-                if warnings:
-                    st.warning("**Please review the following:**")
-                    for warning in warnings:
-                        st.warning(warning)
-                
-                # Proceed with save
-                idxs = st.session_state.requests[st.session_state.requests["REQUEST_ID"] == selected_id].index
-                if len(idxs) == 0:
-                    st.error("❌ Request ID not found in dataset")
-                else:
-                    for idx in idxs:
-                        for col, val in req_data.items():
-                            st.session_state.requests.at[idx, col] = val
-                    
-                    st.success("✅ Request updated successfully!")
-                    
-                    # Show what was changed
-                    changes = []
-                    for col, new_val in req_data.items():
-                        old_val = request_row.get(col)
-                        if str(old_val) != str(new_val):
-                            changes.append(f"**{col}**: `{old_val}` → `{new_val}`")
-                    
-                    if changes:
-                        st.info("**Changes made:**\n" + "\n".join(changes))
-                        
-        except Exception as e:
-            st.error(f"❌ Unexpected error occurred while saving: {str(e)}")
-            st.error("Please check your data and try again, or contact support if the problem persists.")
 
     st.markdown("### 📄 Associated Datasets")
     dataset_columns = [col for col in req_df.columns if "DATASET" in col.upper()]
