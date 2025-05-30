@@ -268,6 +268,19 @@ def show_request_form_editor():
         # Create editable dataframe for the current request
         edit_df = req_df[["REQUEST_ID"] + selected_req_cols].copy()
         
+        # Clean the DataFrame to avoid PyArrow issues
+        for col in edit_df.columns:
+            if "DATE" in col.upper():
+                # Convert to proper datetime, then to date for consistency
+                edit_df[col] = pd.to_datetime(edit_df[col], errors='coerce')
+                # Convert to date objects to avoid timezone issues
+                edit_df[col] = edit_df[col].dt.date
+            else:
+                # Convert to string and handle NaN values
+                edit_df[col] = edit_df[col].astype(str)
+                edit_df[col] = edit_df[col].replace('nan', '')
+                edit_df[col] = edit_df[col].replace('<NA>', '')
+        
         # Configure column types for better editing experience
         column_config = {}
         for col in selected_req_cols:
@@ -280,11 +293,12 @@ def show_request_form_editor():
             elif col == "REQUEST_STATUS":
                 # Get unique status values from the full dataset for dropdown
                 status_options = sorted(df["REQUEST_STATUS"].dropna().unique().tolist()) if "REQUEST_STATUS" in df.columns else []
-                column_config[col] = st.column_config.SelectboxColumn(
-                    col,
-                    help="Select request status",
-                    options=status_options
-                )
+                if status_options:
+                    column_config[col] = st.column_config.SelectboxColumn(
+                        col,
+                        help="Select request status",
+                        options=status_options
+                    )
             else:
                 column_config[col] = st.column_config.TextColumn(
                     col,
@@ -386,6 +400,20 @@ def show_request_form_editor():
             
             # Create editable table for bulk editing
             bulk_edit_df = flagged_df[["REQUEST_ID"] + selected_req_cols].copy()
+            
+            # Clean the DataFrame to avoid PyArrow issues
+            for col in bulk_edit_df.columns:
+                if "DATE" in col.upper():
+                    # Convert to proper datetime, then to date for consistency
+                    bulk_edit_df[col] = pd.to_datetime(bulk_edit_df[col], errors='coerce')
+                    # Convert to date objects, keeping None for NaT
+                    bulk_edit_df[col] = bulk_edit_df[col].dt.date
+                else:
+                    # Convert to string and handle NaN values
+                    bulk_edit_df[col] = bulk_edit_df[col].astype(str)
+                    bulk_edit_df[col] = bulk_edit_df[col].replace('nan', '')
+                    bulk_edit_df[col] = bulk_edit_df[col].replace('<NA>', '')
+                    bulk_edit_df[col] = bulk_edit_df[col].replace('None', '')
             
             # Use the same column config as above
             bulk_edited_df = st.data_editor(
