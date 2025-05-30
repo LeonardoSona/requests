@@ -12,24 +12,58 @@ if "requests" not in st.session_state:
 # Utility: Enhanced metrics
 def compute_enhanced_metrics(df):
     metrics = {}
-    df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df.get('DATE_REQUEST_RECEIVED_X'), errors='coerce')
-    df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df.get('DATE_ACCESS_GRANTED_X'), errors='coerce')
-    df['CYCLE_TIME_DAYS'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+    
+    # Early return if DataFrame is empty
+    if df.empty:
+        return {
+            'avg_time_to_approval': None,
+            'median_time_to_approval': None,
+            'overdue_count': 0,
+            'dataset_status_counts': {}
+        }, df
+    
+    # Make a copy to avoid modifying the original DataFrame
+    df = df.copy()
+    
+    # Convert date columns to datetime if they exist
+    if 'DATE_REQUEST_RECEIVED_X' in df.columns:
+        df['DATE_REQUEST_RECEIVED_X'] = pd.to_datetime(df['DATE_REQUEST_RECEIVED_X'], errors='coerce')
+    if 'DATE_ACCESS_GRANTED_X' in df.columns:
+        df['DATE_ACCESS_GRANTED_X'] = pd.to_datetime(df['DATE_ACCESS_GRANTED_X'], errors='coerce')
 
-    metrics['avg_time_to_approval'] = df['TIME_TO_APPROVAL'].mean()
-    metrics['median_time_to_approval'] = df['TIME_TO_APPROVAL'].median()
+    # Calculate TIME_TO_APPROVAL (not CYCLE_TIME_DAYS)
+    if ('DATE_REQUEST_RECEIVED_X' in df.columns and 
+        'DATE_ACCESS_GRANTED_X' in df.columns):
+        df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
+        
+        # Only calculate metrics if we have valid data
+        valid_times = df['TIME_TO_APPROVAL'].dropna()
+        if len(valid_times) > 0:
+            metrics['avg_time_to_approval'] = valid_times.mean()
+            metrics['median_time_to_approval'] = valid_times.median()
+        else:
+            metrics['avg_time_to_approval'] = None
+            metrics['median_time_to_approval'] = None
+    else:
+        metrics['avg_time_to_approval'] = None
+        metrics['median_time_to_approval'] = None
 
+    # Calculate overdue requests
+    if 'DATE_REQUEST_RECEIVED_X' in df.columns and 'REQUEST_STATUS' in df.columns:
+        today = pd.Timestamp.now()
+        df['DAYS_SINCE_REQUEST'] = (today - df['DATE_REQUEST_RECEIVED_X']).dt.days
+        df['OVERDUE'] = (df['REQUEST_STATUS'] != 'Approved') & (df['DAYS_SINCE_REQUEST'] > 90)
+        metrics['overdue_count'] = int(df['OVERDUE'].sum())
+    else:
+        metrics['overdue_count'] = 0
+
+    # Dataset status counts
     if 'DATASET_STATUS' in df.columns:
         metrics['dataset_status_counts'] = df['DATASET_STATUS'].value_counts().to_dict()
     else:
         metrics['dataset_status_counts'] = {}
 
-    today = pd.Timestamp.now()
-    df['DAYS_SINCE_REQUEST'] = (today - df['DATE_REQUEST_RECEIVED_X']).dt.days
-    df['OVERDUE'] = (df['REQUEST_STATUS'] != 'Approved') & (df['DAYS_SINCE_REQUEST'] > 90)
-    metrics['overdue_count'] = df['OVERDUE'].sum()
-
-    return metrics
+    return metrics, df
 
 # Import Excel
 def show_import_export():
@@ -48,11 +82,14 @@ def show_import_export():
 def show_dashboard():
     st.subheader("📊 Dashboard")
     df = st.session_state.requests.copy()
+    
+    # Check if data is available BEFORE calling compute_enhanced_metrics
     if df.empty or "REQUEST_ID" not in df.columns:
         st.info("No request data available.")
         return
 
-    metrics = compute_enhanced_metrics(df)
+    # Now call compute_enhanced_metrics and get both metrics and updated df
+    metrics, df = compute_enhanced_metrics(df)
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Requests", len(df["REQUEST_ID"].dropna().unique()))
@@ -80,7 +117,7 @@ def show_dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
     if "DATE_REQUEST_RECEIVED_X" in df.columns:
-        df["DATE_REQUEST_RECEIVED_X"] = pd.to_datetime(df["DATE_REQUEST_RECEIVED_X"], errors="coerce")
+        # Create week column for time series analysis
         df['WEEK'] = df["DATE_REQUEST_RECEIVED_X"].dt.to_period("W").astype(str)
     
         # Total Requests Per Week
@@ -98,16 +135,16 @@ def show_dashboard():
 
         # Avg. Cycle Time for Completed Requests
         st.markdown("#### ⏳ Avg. Cycle Time for Completed Requests Per Week")
-        df['TIME_TO_APPROVAL'] = (df['DATE_ACCESS_GRANTED_X'] - df['DATE_REQUEST_RECEIVED_X']).dt.days
-        completed = df[df['REQUEST_STATUS'] == 'Approved'].dropna(subset=['TIME_TO_APPROVAL'])
-        #completed = df.dropna(subset=['DATE_ACCESS_GRANTED_X', 'DATE_REQUEST_RECEIVED_X'])
-        avg_cycle = completed.groupby('WEEK')['TIME_TO_APPROVAL'].mean().reset_index()
-        fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
-        st.plotly_chart(fig3, use_container_width=True)
+        if 'TIME_TO_APPROVAL' in df.columns and 'REQUEST_STATUS' in df.columns:
+            completed = df[df['REQUEST_STATUS'] == 'Approved'].dropna(subset=['TIME_TO_APPROVAL'])
+            if not completed.empty:
+                avg_cycle = completed.groupby('WEEK')['TIME_TO_APPROVAL'].mean().reset_index()
+                fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
+                st.plotly_chart(fig3, use_container_width=True)
 
         # Weekly Breakdown: Submitted vs. Completed vs. In Progress
         st.markdown("#### 📊 Weekly Breakdown: Submitted vs. Completed vs. In Progress")
-        if "REQUEST_STATUS" in df.columns:
+        if "REQUEST_STATUS" in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
             submitted = df.groupby('WEEK').size().rename("Submitted")
             completed = df.dropna(subset=['DATE_ACCESS_GRANTED_X']).groupby('WEEK').size().rename("Completed")
             in_progress = df[df['DATE_ACCESS_GRANTED_X'].isna()].groupby('WEEK').size().rename("In Progress")
@@ -130,9 +167,10 @@ def show_dashboard():
             if step_col in df.columns:
                 df[step_col] = pd.to_datetime(df[step_col], errors='coerce')
                 df[f'{label}_DAYS'] = (df[step_col] - df['DATE_REQUEST_RECEIVED_X']).dt.days
-                step_avg = df.groupby('WEEK')[f'{label}_DAYS'].mean().reset_index()
-                fig_step = px.line(step_avg, x='WEEK', y=f'{label}_DAYS', title=f'Average Time to {label} Per Week')
-                st.plotly_chart(fig_step, use_container_width=True)
+                step_avg = df.dropna(subset=[f'{label}_DAYS']).groupby('WEEK')[f'{label}_DAYS'].mean().reset_index()
+                if not step_avg.empty:
+                    fig_step = px.line(step_avg, x='WEEK', y=f'{label}_DAYS', title=f'Average Time to {label} Per Week')
+                    st.plotly_chart(fig_step, use_container_width=True)
 
         # 🧩 Milestone-Based Cycle Durations
         st.markdown("#### 🧪 Cycle Durations by Stage")
@@ -207,17 +245,17 @@ def show_request_form_editor():
     req_columns = req_df.columns.tolist()
     
     milestone_columns = [
-    "NAME",
-    "REQUEST_STATUS",
-    "DATE_REQUEST_RECEIVED_X",
-    "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
-    "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
-    "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
-    "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
-    "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
-    "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
-    "V1_PROPOSAL_COMPLETE_DATE",
-    "DATE_ACCESS_GRANTED_X"
+        "NAME",
+        "REQUEST_STATUS",
+        "DATE_REQUEST_RECEIVED_X",
+        "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
+        "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
+        "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
+        "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
+        "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
+        "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
+        "V1_PROPOSAL_COMPLETE_DATE",
+        "DATE_ACCESS_GRANTED_X"
     ]
 
     selected_req_cols = st.multiselect(
@@ -228,12 +266,13 @@ def show_request_form_editor():
 
     # 🔍 Requests with Missing Fields
     st.markdown("### 🔍 Requests with Missing Fields")
-    flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
-    if not flagged_df.empty:
-        st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
-        st.dataframe(flagged_df[["REQUEST_ID"] + selected_req_cols], use_container_width=True)
-    else:
-        st.success("✅ No missing fields in selected columns.")
+    if selected_req_cols:  # Only check if there are selected columns
+        flagged_df = df[df[selected_req_cols].isna().any(axis=1) | (df[selected_req_cols] == "").any(axis=1)]
+        if not flagged_df.empty:
+            st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
+            st.dataframe(flagged_df[["REQUEST_ID"] + selected_req_cols], use_container_width=True)
+        else:
+            st.success("✅ No missing fields in selected columns.")
 
     # Determine missing values in selected fields
     missing_fields = [col for col in selected_req_cols if pd.isna(request_row.get(col)) or str(request_row.get(col)).strip() == ""]
@@ -254,7 +293,7 @@ def show_request_form_editor():
                 req_data[col] = st.text_input("", value, key=f"text_{col}")
 
     if st.button("💾 Save Request"):
-        idxs = df[df["REQUEST_ID"] == selected_id].index
+        idxs = st.session_state.requests[st.session_state.requests["REQUEST_ID"] == selected_id].index
         for idx in idxs:
             for col, val in req_data.items():
                 st.session_state.requests.at[idx, col] = val
@@ -263,12 +302,13 @@ def show_request_form_editor():
     st.markdown("### 📄 Associated Datasets")
     dataset_columns = [col for col in req_df.columns if "DATASET" in col.upper()]
     if dataset_columns:
+        # Only show available columns in the default
+        available_defaults = [col for col in ["DATASET_ID", "DATASET_NAME", "DATASET_STATUS"] if col in dataset_columns]
         selected_ds_cols = st.multiselect("Choose dataset columns to display", dataset_columns,
-                                          default=["DATASET_ID", "DATASET_NAME", "DATASET_STATUS"])
-        dataset_df = req_df[selected_ds_cols].copy()
-        st.dataframe(dataset_df, use_container_width=True)
-
-    
+                                          default=available_defaults)
+        if selected_ds_cols:
+            dataset_df = req_df[selected_ds_cols].copy()
+            st.dataframe(dataset_df, use_container_width=True)
 
 # App Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📋 Request Form Editor", "📥 Import Excel"])
