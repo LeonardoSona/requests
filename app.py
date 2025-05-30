@@ -374,8 +374,14 @@ def show_request_form_editor():
             st.session_state.field_preset = 'custom'
             st.rerun()
     
-    # Combine all selected columns
-    selected_req_cols = selected_basic + selected_timeline + selected_datasets + selected_other
+    # Combine all selected columns and remove duplicates while preserving order
+    all_selected = selected_basic + selected_timeline + selected_datasets + selected_other
+    selected_req_cols = []
+    seen = set()
+    for col in all_selected:
+        if col not in seen:
+            selected_req_cols.append(col)
+            seen.add(col)
     
     # Show current preset and field information
     col1, col2, col3 = st.columns(3)
@@ -399,7 +405,9 @@ def show_request_form_editor():
 
     if selected_req_cols:
         # Create editable dataframe for the current request
-        edit_df = req_df[["REQUEST_ID"] + selected_req_cols].copy()
+        # Ensure REQUEST_ID is first and no duplicates
+        columns_to_show = ["REQUEST_ID"] + [col for col in selected_req_cols if col != "REQUEST_ID"]
+        edit_df = req_df[columns_to_show].copy()
         
         # Clean the DataFrame to avoid PyArrow issues
         for col in edit_df.columns:
@@ -532,7 +540,9 @@ def show_request_form_editor():
             st.warning(f"⚠️ {len(flagged_df)} request(s) with missing values in selected fields.")
             
             # Create editable table for bulk editing
-            bulk_edit_df = flagged_df[["REQUEST_ID"] + selected_req_cols].copy()
+            # Ensure REQUEST_ID is first and no duplicates
+            columns_to_show = ["REQUEST_ID"] + [col for col in selected_req_cols if col != "REQUEST_ID"]
+            bulk_edit_df = flagged_df[columns_to_show].copy()
             
             # Clean the DataFrame to avoid PyArrow issues
             for col in bulk_edit_df.columns:
