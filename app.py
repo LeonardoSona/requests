@@ -106,56 +106,66 @@ def show_dashboard():
         status_df = pd.DataFrame(metrics['dataset_status_counts'].items(), columns=["Status", "Count"])
         st.dataframe(status_df, use_container_width=True)
 
-    if "REQUEST_STATUS" in df.columns:
-        st.markdown("#### 🧁 Request Status Distribution")
-        status_counts = df["REQUEST_STATUS"].value_counts()
-        fig = px.pie(
-            values=status_counts.values,
-            names=status_counts.index,
-            title="Request Status Distribution"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    if "DATE_REQUEST_RECEIVED_X" in df.columns:
-        # Create week column for time series analysis
-        df['WEEK'] = df["DATE_REQUEST_RECEIVED_X"].dt.to_period("W").astype(str)
+    # Row 1: Request Status Distribution, Total Requests Per Week, Requests by Status Per Week
+    col1, col2, col3 = st.columns(3)
     
-        # Total Requests Per Week
-        st.markdown("#### 📈 Total Requests Per Week")
-        total_per_week = df.groupby('WEEK').size().reset_index(name='Total Requests')
-        fig1 = px.line(total_per_week, x='WEEK', y='Total Requests', title='Total Requests Per Week')
-        st.plotly_chart(fig1, use_container_width=True)
+    with col1:
+        if "REQUEST_STATUS" in df.columns:
+            st.markdown("#### 🧁 Request Status Distribution")
+            status_counts = df["REQUEST_STATUS"].value_counts()
+            fig = px.pie(
+                values=status_counts.values,
+                names=status_counts.index,
+                title="Request Status Distribution"
+            )
+            st.plotly_chart(fig, use_container_width=True)
     
-        # Requests by Status Per Week
-        st.markdown("#### 🗂️ Requests by Status Per Week")
-        if 'REQUEST_STATUS' in df.columns:
+    with col2:
+        if "DATE_REQUEST_RECEIVED_X" in df.columns:
+            # Create week column for time series analysis
+            df['WEEK'] = df["DATE_REQUEST_RECEIVED_X"].dt.to_period("W").astype(str)
+            
+            st.markdown("#### 📈 Total Requests Per Week")
+            total_per_week = df.groupby('WEEK').size().reset_index(name='Total Requests')
+            fig1 = px.line(total_per_week, x='WEEK', y='Total Requests', title='Total Requests Per Week')
+            st.plotly_chart(fig1, use_container_width=True)
+    
+    with col3:
+        if "DATE_REQUEST_RECEIVED_X" in df.columns and 'REQUEST_STATUS' in df.columns:
+            st.markdown("#### 🗂️ Requests by Status Per Week")
             status_week = df.groupby(['WEEK', 'REQUEST_STATUS']).size().reset_index(name='Count')
             fig2 = px.line(status_week, x='WEEK', y='Count', color='REQUEST_STATUS', title='Requests by Status Per Week')
             st.plotly_chart(fig2, use_container_width=True)
 
-        # Avg. Cycle Time for Completed Requests
-        st.markdown("#### ⏳ Avg. Cycle Time for Completed Requests Per Week")
-        if 'TIME_TO_APPROVAL' in df.columns and 'REQUEST_STATUS' in df.columns:
-            completed = df[df['REQUEST_STATUS'] == 'Approved'].dropna(subset=['TIME_TO_APPROVAL'])
-            if not completed.empty:
-                avg_cycle = completed.groupby('WEEK')['TIME_TO_APPROVAL'].mean().reset_index()
-                fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
-                st.plotly_chart(fig3, use_container_width=True)
+    # Row 2: Avg Cycle Time, Weekly Breakdown (2 columns, centered)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        if "DATE_REQUEST_RECEIVED_X" in df.columns:
+            # Avg. Cycle Time for Completed Requests
+            st.markdown("#### ⏳ Avg. Cycle Time for Completed Requests Per Week")
+            if 'TIME_TO_APPROVAL' in df.columns and 'REQUEST_STATUS' in df.columns:
+                completed = df[df['REQUEST_STATUS'] == 'Approved'].dropna(subset=['TIME_TO_APPROVAL'])
+                if not completed.empty:
+                    avg_cycle = completed.groupby('WEEK')['TIME_TO_APPROVAL'].mean().reset_index()
+                    fig3 = px.line(avg_cycle, x='WEEK', y='TIME_TO_APPROVAL', title='Avg. Cycle Time for Completed Requests')
+                    st.plotly_chart(fig3, use_container_width=True)
 
-        # Weekly Breakdown: Submitted vs. Completed vs. In Progress
-        st.markdown("#### 📊 Weekly Breakdown: Submitted vs. Completed vs. In Progress")
-        if "REQUEST_STATUS" in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
-            submitted = df.groupby('WEEK').size().rename("Submitted")
-            completed = df.dropna(subset=['DATE_ACCESS_GRANTED_X']).groupby('WEEK').size().rename("Completed")
-            in_progress = df[df['DATE_ACCESS_GRANTED_X'].isna()].groupby('WEEK').size().rename("In Progress")
-            
-            weekly_summary = pd.concat([submitted, completed, in_progress], axis=1).fillna(0).reset_index()
-            melted_summary = weekly_summary.melt(id_vars='WEEK', var_name='Metric', value_name='Count')
-            
-            fig4 = px.line(melted_summary, x='WEEK', y='Count', color='Metric', title='Submitted vs Completed vs In Progress Per Week')
-            st.plotly_chart(fig4, use_container_width=True)
+            # Weekly Breakdown: Submitted vs. Completed vs. In Progress
+            st.markdown("#### 📊 Weekly Breakdown: Submitted vs. Completed vs. In Progress")
+            if "REQUEST_STATUS" in df.columns and 'DATE_ACCESS_GRANTED_X' in df.columns:
+                submitted = df.groupby('WEEK').size().rename("Submitted")
+                completed = df.dropna(subset=['DATE_ACCESS_GRANTED_X']).groupby('WEEK').size().rename("Completed")
+                in_progress = df[df['DATE_ACCESS_GRANTED_X'].isna()].groupby('WEEK').size().rename("In Progress")
+                
+                weekly_summary = pd.concat([submitted, completed, in_progress], axis=1).fillna(0).reset_index()
+                melted_summary = weekly_summary.melt(id_vars='WEEK', var_name='Metric', value_name='Count')
+                
+                fig4 = px.line(melted_summary, x='WEEK', y='Count', color='Metric', title='Submitted vs Completed vs In Progress Per Week')
+                st.plotly_chart(fig4, use_container_width=True)
 
-        # Phase-Level Cycle Times (matching your specification)
+    # Row 3: Phase-Level Cycle Times (all in one chart)
+    if "DATE_REQUEST_RECEIVED_X" in df.columns:
         st.markdown("#### ⏱️ Phase-Level Cycle Times Per Week")
         phase_calculations = [
             ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
@@ -165,6 +175,8 @@ def show_dashboard():
             ("DATE_OF_DATA_USE_GOVERNANCE_DECISION", "V1_PROPOSAL_COMPLETE_DATE", "Proposal")
         ]
         
+        # Combine all phase data into one chart
+        all_phase_data = []
         for start_col, end_col, label in phase_calculations:
             if start_col in df.columns and end_col in df.columns:
                 df[start_col] = pd.to_datetime(df[start_col], errors='coerce')
@@ -172,13 +184,21 @@ def show_dashboard():
                 df[f'{label}_DAYS'] = (df[end_col] - df[start_col]).dt.days
                 step_avg = df.dropna(subset=[f'{label}_DAYS']).groupby('WEEK')[f'{label}_DAYS'].mean().reset_index()
                 if not step_avg.empty:
-                    fig_step = px.line(step_avg, x='WEEK', y=f'{label}_DAYS', title=f'Average Time for {label} Per Week')
-                    st.plotly_chart(fig_step, use_container_width=True)
+                    step_avg['Phase'] = label
+                    step_avg = step_avg.rename(columns={f'{label}_DAYS': 'Days'})
+                    all_phase_data.append(step_avg)
+        
+        if all_phase_data:
+            combined_phase_df = pd.concat(all_phase_data, ignore_index=True)
+            fig_phases = px.line(combined_phase_df, x='WEEK', y='Days', color='Phase', 
+                               title='Phase-Level Cycle Times Per Week')
+            st.plotly_chart(fig_phases, use_container_width=True)
 
-        # 🧩 Milestone-Based Cycle Durations
+    # Row 4: Cycle Durations by Stage (all in one chart)
+    if "DATE_REQUEST_RECEIVED_X" in df.columns:
         st.markdown("#### 🧪 Cycle Durations by Stage")
         
-        # Define milestones as tuples: (start_col, end_col, label) - matching your specification
+        # Define milestones as tuples: (start_col, end_col, label)
         milestone_stages = [
             ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
             ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Decision"),
@@ -194,14 +214,22 @@ def show_dashboard():
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors="coerce")
         
-        # Compute and plot duration per milestone stage
+        # Combine all stage data into one chart
+        all_stage_data = []
         for start_col, end_col, label in milestone_stages:
             if start_col in df.columns and end_col in df.columns:
                 df[f"{label}_DAYS"] = (df[end_col] - df[start_col]).dt.days
                 stage_avg = df.dropna(subset=[f"{label}_DAYS"]).groupby('WEEK')[f"{label}_DAYS"].mean().reset_index()
                 if not stage_avg.empty:
-                    fig = px.line(stage_avg, x='WEEK', y=f"{label}_DAYS", title=f"Average Time to {label} Per Week")
-                    st.plotly_chart(fig, use_container_width=True)
+                    stage_avg['Stage'] = label
+                    stage_avg = stage_avg.rename(columns={f"{label}_DAYS": 'Days'})
+                    all_stage_data.append(stage_avg)
+        
+        if all_stage_data:
+            combined_stage_df = pd.concat(all_stage_data, ignore_index=True)
+            fig_stages = px.line(combined_stage_df, x='WEEK', y='Days', color='Stage', 
+                               title='Cycle Durations by Stage Per Week')
+            st.plotly_chart(fig_stages, use_container_width=True)
 
 
 # Request Form Editor with DQ flag icons and status filter
