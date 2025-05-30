@@ -26,17 +26,12 @@ def compute_enhanced_metrics(df):
         metrics['avg_time_to_approval'] = None
         metrics['median_time_to_approval'] = None
 
-    if 'DATASET_STATUS' in df.columns:
-        metrics['dataset_status_counts'] = df['DATASET_STATUS'].value_counts().to_dict()
-    else:
-        metrics['dataset_status_counts'] = {}
-
     today = pd.Timestamp.now()
     df['DAYS_SINCE_REQUEST'] = (today - df['DATE_REQUEST_RECEIVED_X']).dt.days
     df['OVERDUE'] = (df['REQUEST_STATUS'] != 'Approved') & (df['DAYS_SINCE_REQUEST'] > 90)
     metrics['overdue_count'] = df['OVERDUE'].sum()
 
-    return metrics
+    return metrics, df
 
 # Import Excel
 def show_import_export():
@@ -59,7 +54,7 @@ def show_dashboard():
         st.info("No request data available.")
         return
 
-    metrics = compute_enhanced_metrics(df)
+    metrics, df = compute_enhanced_metrics(df)
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Requests", len(df["REQUEST_ID"].dropna().unique()))
