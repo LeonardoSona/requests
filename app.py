@@ -204,22 +204,27 @@ def show_request_form_editor():
     request_row = req_df.iloc[0].copy()
 
     st.markdown("### ✏️ Request Details")
-    req_columns = req_df.columns.tolist()
-    
-    milestone_columns = [
-    "NAME",
-    "REQUEST_STATUS",
-    "DATE_REQUEST_RECEIVED_X",
-    "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
-    "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
-    "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
-    "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
-    "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
-    "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
-    "V1_PROPOSAL_COMPLETE_DATE",
-    "DATE_ACCESS_GRANTED_X"
-    ]
+    req_columns = [col.strip() for col in req_df.columns.tolist()]  # clean any stray spaces
 
+    milestone_columns = [
+        "NAME",
+        "REQUEST_STATUS",
+        "DATE_REQUEST_RECEIVED_X",
+        "DATE_SHARED_WITH_SCIENTIFIC_SPADM",
+        "DATE_OF_SCIENTIFIC_REVIEW_DECISION",
+        "DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM",
+        "DATE_OF_DATA_USE_GOVERNANCE_DECISION",
+        "DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE",
+        "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE",
+        "V1_PROPOSAL_COMPLETE_DATE",
+        "DATE_ACCESS_GRANTED_X"
+    ]
+    
+    # Log any missing milestone columns
+    missing_defaults = [col for col in milestone_columns if col not in req_columns]
+    if missing_defaults:
+        st.warning(f"Missing milestone columns from this request: {missing_defaults}")
+    
     selected_req_cols = st.multiselect(
         "Choose columns to display/edit for the request",
         req_columns,
