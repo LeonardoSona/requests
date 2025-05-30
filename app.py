@@ -472,11 +472,15 @@ def show_request_form_editor():
             dataset_df = dataset_df.astype(str)
             st.dataframe(dataset_df, use_container_width=True)
 
-# App Tabs
-tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📋 Request Form Editor", "📥 Import Excel"])
-with tab1:
+# Main Application - Single Page
+st.title("📝 Request Management System")
+
+# Navigation menu
+page = st.sidebar.selectbox("Choose a page", ["📊 Dashboard", "📋 Request Form Editor", "📥 Import Excel"])
+
+if page == "📊 Dashboard":
     show_dashboard()
-with tab2:
+elif page == "📋 Request Form Editor":
     show_request_form_editor()
-with tab3:
+elif page == "📥 Import Excel":
     show_import_export()
