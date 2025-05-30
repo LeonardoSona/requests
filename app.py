@@ -175,10 +175,10 @@ def show_dashboard():
         # 🧩 Milestone-Based Cycle Durations
         st.markdown("#### 🧪 Cycle Durations by Stage")
         
-        # Define milestones as tuples: (start_col, end_col, label)
+        # Define milestones as tuples: (start_col, end_col, label) - matching your specification
         milestone_stages = [
             ("DATE_REQUEST_RECEIVED_X", "DATE_SHARED_WITH_SCIENTIFIC_SPADM", "Initial Review"),
-            ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Review"),
+            ("DATE_SHARED_WITH_SCIENTIFIC_SPADM", "DATE_OF_SCIENTIFIC_REVIEW_DECISION", "Scientific Decision"),
             ("DATE_SHARED_WITH_DATA_USE_GOVERNANCE_SPADM", "DATE_OF_DATA_USE_GOVERNANCE_DECISION", "Governance Review"),
             ("DATE_OF_ANONYMIZATION_STARTED_IF_APPLICABLE", "DATE_OF_ANONYMIZATION_COMPLETED_IF_APPLICABLE", "Anonymization"),
             ("DATE_OF_DATA_USE_GOVERNANCE_DECISION", "V1_PROPOSAL_COMPLETE_DATE", "Proposal"),
